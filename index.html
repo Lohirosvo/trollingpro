@@ -1,0 +1,853 @@
+<!DOCTYPE html>
+<html lang="fi">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover, maximum-scale=1.0, user-scalable=no">
+<meta name="theme-color" content="#071219">
+<title>TrollingPro 2 – vetouistelun syvyysprofiili</title>
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="kuvake-192.png">
+<link rel="apple-touch-icon" href="kuvake-192.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="description" content="Vetouistelun syvyyslaskin ja sivuprofiili: siiman muoto, uistimen syvyys ja etäisyys veneestä.">
+<style>
+:root{
+  --sea-900:#050d13; --sea-800:#08151d; --sea-700:#0d202b; --sea-600:#143040;
+  --line:#1d3a4c; --line-soft:#162c3a;
+  --ink:#eef6fa; --ink-dim:#8fa8b8; --ink-faint:#5d7482;
+  --port:#ff5f57; --stbd:#3ddc84; --sky:#4cc3f0; --warn:#ffb340;
+  --pad:12px;
+}
+*{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent}
+html,body{height:100%}
+body{
+  background:var(--sea-900); color:var(--ink);
+  font:400 15px/1.4 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;
+  font-variant-numeric:tabular-nums;
+  display:flex; flex-direction:column; overflow:hidden;
+}
+button,input,select{font:inherit;font-variant-numeric:tabular-nums}
+button{cursor:pointer}
+:focus-visible{outline:2px solid var(--sky);outline-offset:2px}
+
+header{
+  display:flex;align-items:center;justify-content:space-between;gap:10px;
+  padding:calc(env(safe-area-inset-top) + 8px) 14px 8px;
+  background:var(--sea-800);border-bottom:1px solid var(--line);
+}
+.brand{font-size:15px;font-weight:700;letter-spacing:.02em}
+.brand em{font-style:normal;color:var(--sky)}
+.chip{font-size:12px;font-weight:600;padding:4px 9px;border-radius:999px;background:#122531;color:var(--ink-faint);border:1px solid var(--line)}
+.chip.live{background:#0e3a24;color:var(--stbd);border-color:#1c6a44}
+
+main{flex:1;overflow-y:auto;overflow-x:hidden;padding-bottom:78px;-webkit-overflow-scrolling:touch}
+.tab{display:none;padding:var(--pad)}
+.tab.on{display:block}
+
+/* --- profiili --- */
+.stage{background:linear-gradient(180deg,#0a1a24,#061019);border:1px solid var(--line);border-radius:10px;overflow:hidden}
+.stage svg{display:block;width:100%;height:auto}
+.stage-foot{display:flex;gap:14px;padding:7px 10px;border-top:1px solid var(--line-soft);font-size:11px;color:var(--ink-faint)}
+
+.readouts{display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;margin-top:10px}
+.ro{background:var(--sea-700);border:1px solid var(--line);border-radius:8px;padding:8px 10px}
+.ro b{display:block;font-size:26px;font-weight:700;line-height:1.05}
+.ro small{display:block;font-size:11px;color:var(--ink-dim);margin-top:3px}
+
+.bar{display:flex;align-items:center;gap:10px;background:var(--sea-700);border:1px solid var(--line);border-radius:8px;padding:10px;margin-top:10px}
+.bar label{font-size:12px;color:var(--ink-dim);white-space:nowrap}
+input[type=range]{flex:1;min-width:40px;accent-color:var(--sky)}
+.btn{border:1px solid var(--line);background:var(--sea-600);color:var(--ink);border-radius:8px;padding:9px 12px;font-size:13px;font-weight:600}
+.btn.go{background:#0e3a24;border-color:#1c6a44;color:var(--stbd)}
+.btn.on{background:var(--stbd);color:#04140b;border-color:var(--stbd)}
+.btn.ghost{background:transparent;color:var(--ink-dim)}
+.btn.wide{width:100%}
+.btn.sm{padding:6px 9px;font-size:12px}
+
+.sides{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:10px}
+.side{background:var(--sea-700);border:1px solid var(--line);border-radius:8px;padding:8px;min-height:120px}
+.side h2{font-size:12px;font-weight:600;color:var(--ink-dim);display:flex;align-items:center;gap:6px;margin-bottom:8px}
+.dot{width:9px;height:9px;border-radius:50%;flex:none}
+.side .add{width:100%;margin-top:6px}
+.empty{font-size:11px;color:var(--ink-faint);text-align:center;padding:14px 4px;line-height:1.5}
+
+.rod{background:var(--sea-800);border:1px solid var(--line-soft);border-left:3px solid var(--sky);border-radius:6px;padding:7px 8px;margin-bottom:6px;position:relative}
+.rod .nm{font-size:12px;font-weight:600;line-height:1.25;padding-right:16px;word-break:break-word}
+.rod .pm{font-size:10px;color:var(--ink-faint);margin-top:3px}
+.rod .dp{font-size:22px;font-weight:700;text-align:right;margin-top:2px}
+.rod .x{position:absolute;top:2px;right:2px;background:none;border:none;color:var(--ink-faint);font-size:14px;padding:3px 6px;line-height:1}
+.rod.deep{border-color:var(--warn);background:#231a08}
+.rod .alert{font-size:10px;color:var(--warn);margin-top:2px}
+
+/* --- lomakerivit --- */
+.card{background:var(--sea-700);border:1px solid var(--line);border-radius:10px;margin-bottom:10px;overflow:hidden}
+.card>h3{font-size:12px;font-weight:600;color:var(--ink-dim);padding:9px 12px;background:var(--sea-800);border-bottom:1px solid var(--line)}
+.row{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:10px 12px;border-bottom:1px solid var(--line-soft)}
+.row:last-child{border-bottom:none}
+.row .lb{font-size:13px}
+.row .sub{font-size:10.5px;color:var(--ink-faint);margin-top:2px}
+.num{display:flex;align-items:center;gap:6px;flex:none}
+.num input{background:var(--sea-900);border:1px solid var(--line);color:var(--ink);border-radius:6px;padding:7px 8px;width:86px;text-align:right;font-size:16px;font-weight:600}
+.num span{font-size:11px;color:var(--ink-dim);width:26px}
+.num select{background:var(--sea-900);border:1px solid var(--line);color:var(--ink);border-radius:6px;padding:7px 8px;font-size:13px;max-width:160px}
+.res{background:#0b2318}
+.res .lb{color:var(--stbd);font-weight:600}
+.res b{font-size:26px;color:var(--stbd);font-weight:700}
+
+.pills{display:flex;flex-wrap:wrap;gap:6px;padding:8px 12px}
+.pill{border:1px solid var(--line);background:var(--sea-900);color:var(--ink-dim);border-radius:999px;padding:6px 11px;font-size:13px}
+.pill.on{background:var(--sky);border-color:var(--sky);color:#04202b;font-weight:700}
+
+table{width:100%;border-collapse:collapse;font-size:12.5px}
+th,td{padding:7px 10px;text-align:right;border-bottom:1px solid var(--line-soft)}
+th{color:var(--ink-faint);font-weight:500;font-size:11px}
+td:first-child,th:first-child{text-align:left;color:var(--ink-dim)}
+
+nav{position:fixed;left:0;right:0;bottom:0;display:flex;background:#040b10;border-top:1px solid var(--line);padding-bottom:env(safe-area-inset-bottom);z-index:40}
+nav button{flex:1;background:none;border:none;color:var(--ink-faint);font-size:11px;padding:9px 0 10px;display:flex;flex-direction:column;align-items:center;gap:3px}
+nav button i{font-style:normal;font-size:17px}
+nav button.on{color:var(--sky)}
+
+.sheet{position:fixed;inset:0;background:rgba(2,8,12,.78);display:none;align-items:flex-end;z-index:100}
+.sheet.on{display:flex}
+.sheet-inner{width:100%;max-height:88vh;background:var(--sea-700);border-top:1px solid var(--line);border-radius:14px 14px 0 0;display:flex;flex-direction:column;padding-bottom:env(safe-area-inset-bottom)}
+.sheet-head{display:flex;justify-content:space-between;align-items:center;padding:12px 14px;border-bottom:1px solid var(--line)}
+.sheet-head b{font-size:14px}
+.sheet-body{overflow-y:auto;padding:10px 12px}
+.sheet-foot{padding:10px 12px;border-top:1px solid var(--line);display:flex;gap:8px}
+.hint{font-size:11px;color:var(--ink-faint);line-height:1.5;padding:2px 2px 8px}
+</style>
+</head>
+<body>
+
+<header>
+  <div class="brand">Trolling<em>Pro</em> 2</div>
+  <div id="gpsChip" class="chip">GPS pois</div>
+</header>
+
+<main>
+  <!-- ============ VEDOT ============ -->
+  <section id="tab-vedot" class="tab on">
+    <div class="stage">
+      <div id="profile"></div>
+      <div class="stage-foot">
+        <span>◀ perässä</span><span>Mittakaava 1:1 (syvyys ja etäisyys)</span>
+      </div>
+    </div>
+
+    <div class="readouts">
+      <div class="ro"><b id="roDeep" style="color:var(--sky)">0,0</b><small>syvin uistin, m</small></div>
+      <div class="ro"><b id="roSpeed">0,0</b><small>nopeus, km/h</small></div>
+      <div class="ro"><b id="roBottom">–</b><small>pohja, m</small></div>
+    </div>
+
+    <div class="bar">
+      <button id="gpsBtn" class="btn go" onclick="toggleGPS()">Käynnistä GPS</button>
+      <label for="spd">Käsin</label>
+      <input id="spd" type="range" min="0" max="8" step="0.1" value="3" oninput="setManualSpeed(this.value)">
+    </div>
+
+    <div class="bar">
+      <label for="bot">Pohja</label>
+      <input id="bot" type="range" min="0" max="12" step="0.5" value="8" oninput="setBottom(this.value)">
+      <label for="tgt">Tavoite</label>
+      <input id="tgt" type="range" min="0" max="12" step="0.5" value="6" oninput="setTarget(this.value)">
+    </div>
+
+    <div class="sides">
+      <div class="side">
+        <h2><i class="dot" style="background:var(--port)"></i>Paapuuri</h2>
+        <div id="rods-left"></div>
+        <button class="btn sm add" onclick="openRodSheet('left')">Lisää vapa</button>
+      </div>
+      <div class="side">
+        <h2><i class="dot" style="background:var(--stbd)"></i>Tyyrpuuri</h2>
+        <div id="rods-right"></div>
+        <button class="btn sm add" onclick="openRodSheet('right')">Lisää vapa</button>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============ LASKIN ============ -->
+  <section id="tab-laskin" class="tab">
+    <div class="card">
+      <h3>Uistin</h3>
+      <div id="calcLures" class="pills"></div>
+    </div>
+    <div class="card">
+      <h3>Veto</h3>
+      <div class="row"><div><div class="lb">Siimaa ulkona</div><div id="calcM" class="sub">= 30,5 m</div></div>
+        <div class="num"><input id="calcFt" type="number" value="100" step="5" min="0" oninput="runCalc()"><span>ft</span></div></div>
+      <div class="row"><div><div class="lb">Siiman paksuus</div><div class="sub">ohuempi siima ui syvemmälle</div></div>
+        <div class="num"><input id="calcDia" type="number" value="0.45" step="0.01" min="0.05" oninput="runCalc()"><span>mm</span></div></div>
+      <div class="row"><div class="lb">Lyijypaino</div>
+        <div class="num"><input id="calcW" type="number" value="0" step="10" min="0" oninput="runCalc()"><span>g</span></div></div>
+      <div class="row"><div class="lb">Nopeus</div>
+        <div class="num"><input id="calcS" type="number" value="3.0" step="0.1" min="0" oninput="runCalc()"><span>km/h</span></div></div>
+      <div class="row res"><div><div class="lb">Uistimen syvyys</div><div id="calcMeta" class="sub"></div></div>
+        <div class="num"><b id="calcDepth">0,0</b><span style="color:var(--stbd)">m</span></div></div>
+    </div>
+    <div class="card">
+      <h3>Syvyys siiman pituuden ja nopeuden mukaan</h3>
+      <div style="overflow-x:auto"><table id="calcTable"></table></div>
+    </div>
+    <p class="hint">Taulukon arvot ovat mallin arvioita, eivät mittauksia. Kalibroi malli Kalusto-välilehdeltä, kun tiedät yhden todellisen syvyyden (esim. uistin juuri raapaisee tunnettua pohjaa).</p>
+  </section>
+
+  <!-- ============ KALUSTO ============ -->
+  <section id="tab-kalusto" class="tab">
+    <div class="card">
+      <h3>Uistinkirjasto</h3>
+      <div id="lureList"></div>
+      <div class="row"><button class="btn sm wide" onclick="openLureSheet()">Lisää uistin</button></div>
+    </div>
+
+    <div class="card">
+      <h3>Kalibrointi mittauksella</h3>
+      <div class="row"><div><div class="lb">Uistin</div><div class="sub">yksi tunnettu havainto riittää</div></div><div class="num"><select id="kLure"></select></div></div>
+      <div class="row"><div class="lb">Siimaa ulkona</div><div class="num"><input id="kFt" type="number" value="100" step="5" min="1"><span>ft</span></div></div>
+      <div class="row"><div class="lb">Lyijypaino</div><div class="num"><input id="kW" type="number" value="40" step="5" min="0"><span>g</span></div></div>
+      <div class="row"><div class="lb">Siiman paksuus</div><div class="num"><input id="kDia" type="number" value="0.45" step="0.01" min="0.05"><span>mm</span></div></div>
+      <div class="row"><div class="lb">Nopeus</div><div class="num"><input id="kS" type="number" value="3.0" step="0.1" min="0.5"><span>km/h</span></div></div>
+      <div class="row"><div><div class="lb">Mitattu syvyys</div><div class="sub">esim. syvyys, jossa uistin juuri kosketti pohjaa</div></div><div class="num"><input id="kD" type="number" value="5.0" step="0.1" min="0.1"><span>m</span></div></div>
+      <div class="row"><button class="btn sm wide go" onclick="calibrateFromMeasurement()">Ratkaise uistimen vetovastus</button></div>
+      <div class="row"><div id="kResult" class="sub" style="margin:0">Malli sovittaa uistimen vastuksen niin, että tämä veto osuu mitattuun syvyyteen. Sukelluskäyrä pysyy silti voimassa.</div></div>
+    </div>
+
+    <div class="card">
+      <h3>Mallin vakiot</h3>
+      <div class="row"><div><div class="lb">Syvyyskerroin</div><div class="sub">1,00 = malli sellaisenaan. Nosta jos uistin käy oikeasti syvemmällä.</div></div>
+        <div class="num"><input id="cfgCalib" type="number" value="1.00" step="0.05" min="0.3" max="2" oninput="setCfg('calib',this.value)"><span>×</span></div></div>
+      <div class="row"><div><div class="lb">Vaapun vastuspinta</div><div class="sub">Cd·A 15 g uistimelle; skaalautuu koon mukaan</div></div>
+        <div class="num"><input id="cfgCdaW" type="number" value="0.0035" step="0.0005" min="0.0002" oninput="setCfg('cdaWobbler',this.value)"><span>m²</span></div></div>
+      <div class="row"><div><div class="lb">Lusikan vastuspinta</div><div class="sub">Cd·A</div></div>
+        <div class="num"><input id="cfgCdaS" type="number" value="0.0018" step="0.0005" min="0.0001" oninput="setCfg('cdaSpoon',this.value)"><span>m²</span></div></div>
+      <div class="row"><div><div class="lb">Kelluvan vaapun noste</div><div class="sub">osuus uistimen omasta painosta; suurempi luku nostaa uistimen pintaan hitaassa vedossa</div></div>
+        <div class="num"><input id="cfgBuoy" type="number" value="10" step="1" min="0" max="60" oninput="setCfg('buoyFloat', -this.value/100)"><span>%</span></div></div>
+      <div class="row"><div><div class="lb">Vertailunopeus</div><div class="sub">nopeus, jolla käyrä on mitattu; kelluvalla vaapulla tällä on väliä</div></div>
+        <div class="num"><input id="cfgRefS" type="number" value="4.0" step="0.1" min="1" oninput="setCfg('refSpeed',this.value)"><span>km/h</span></div></div>
+      <div class="row"><div><div class="lb">Vertailusiima</div><div class="sub">10 lb Berkley XT = 0,0135" = 0,343 mm</div></div>
+        <div class="num"><input id="cfgRefD" type="number" value="0.343" step="0.001" min="0.05" oninput="setCfg('refLineDia',this.value)"><span>mm</span></div></div>
+    </div>
+
+    <div class="card">
+      <h3>Oletukset uusille vavoille</h3>
+      <div class="row"><div class="lb">Siiman paksuus</div>
+        <div class="num"><input id="cfgDia" type="number" value="0.45" step="0.01" min="0.05" oninput="setCfg('defDia',this.value)"><span>mm</span></div></div>
+      <div class="row"><div class="lb">Siimaa ulos</div>
+        <div class="num"><input id="cfgFt" type="number" value="100" step="5" min="0" oninput="setCfg('defFt',this.value)"><span>ft</span></div></div>
+    </div>
+
+    <div class="card">
+      <h3>Tiedot</h3>
+      <div class="row"><button class="btn sm wide ghost" onclick="resetAll()">Palauta tehdasasetukset</button></div>
+    </div>
+    <p class="hint">Malli laskee siiman muodon voimatasapainosta: uppoava voima (lyijy + uistimen nettopaino + vaapun lipan alaspäin työntävä voima) vastaan siiman ja uistimen vedenvastus. Siiman vastus lasketaan poikittaiskomponentista, joten pitkä ohutkin siima jarruttaa uppoamista realistisesti.</p>
+  </section>
+</main>
+
+<nav>
+  <button class="on" onclick="tab('vedot',this)"><i>🚤</i>Vedot</button>
+  <button onclick="tab('laskin',this)"><i>🧮</i>Laskin</button>
+  <button onclick="tab('kalusto',this)"><i>🎣</i>Kalusto</button>
+</nav>
+
+<!-- lisää vapa -->
+<div id="rodSheet" class="sheet">
+  <div class="sheet-inner">
+    <div class="sheet-head"><b id="rodSheetTitle">Lisää vapa</b><button class="btn sm ghost" onclick="closeSheets()">Sulje</button></div>
+    <div class="sheet-body">
+      <div class="card"><h3>Uistin</h3><div id="rodLures" class="pills"></div></div>
+      <div class="card"><h3>Siimaa ulos</h3>
+        <div id="rodFtPills" class="pills"></div>
+        <div class="row"><div class="lb">Tarkka määrä</div><div class="num"><input id="rodFt" type="number" value="100" step="5" min="0" oninput="syncRodSheet()"><span>ft</span></div></div>
+      </div>
+      <div class="card"><h3>Lyijypaino</h3>
+        <div id="rodWPills" class="pills"></div>
+        <div class="row"><div class="lb">Tarkka paino</div><div class="num"><input id="rodW" type="number" value="0" step="5" min="0" oninput="syncRodSheet()"><span>g</span></div></div>
+      </div>
+      <div class="card"><h3>Siima</h3>
+        <div class="row"><div class="lb">Paksuus</div><div class="num"><input id="rodDia" type="number" value="0.45" step="0.01" min="0.05" oninput="syncRodSheet()"><span>mm</span></div></div>
+      </div>
+      <div class="card"><div class="row res"><div class="lb">Arvioitu syvyys</div><div class="num"><b id="rodPreview">0,0</b><span style="color:var(--stbd)">m</span></div></div></div>
+    </div>
+    <div class="sheet-foot"><button class="btn wide go" onclick="commitRod()">Laske vetoon</button></div>
+  </div>
+</div>
+
+<!-- uistin -->
+<div id="lureSheet" class="sheet">
+  <div class="sheet-inner">
+    <div class="sheet-head"><b id="lureSheetTitle">Lisää uistin</b><button class="btn sm ghost" onclick="closeSheets()">Sulje</button></div>
+    <div class="sheet-body">
+      <div class="card">
+        <div class="row"><div class="lb">Nimi</div><div class="num"><input id="luName" type="text" style="width:150px;text-align:left" value=""></div></div>
+        <div class="row"><div class="lb">Tyyppi</div><div id="luType" class="num"></div></div>
+        <div class="row"><div><div class="lb">Kellunta</div><div class="sub">vaikuttaa siihen, miten uistin käyttäytyy hitaassa vedossa</div></div><div id="luBuoy" class="num"></div></div>
+        <div class="row"><div><div class="lb">Oma paino</div><div class="sub">uistimen paino ilmassa</div></div><div class="num"><input id="luW" type="number" value="20" step="1" min="1"><span>g</span></div></div>
+        <div class="row"><div><div class="lb">Uintisyvyys</div><div class="sub">valmistajan lukema pitkällä siimalla, ilman painoa</div></div><div class="num"><input id="luD" type="number" value="2.5" step="0.1" min="0"><span>m</span></div></div>
+      </div>
+      <p class="hint">Lusikalle ja raksille jätä uintisyvyys nollaan – ne uppoavat omalla painollaan, eivät sukella lipan avulla.</p>
+    </div>
+    <div class="sheet-foot"><button class="btn wide go" onclick="commitLure()">Tallenna uistin</button></div>
+  </div>
+</div>
+
+<script>
+"use strict";
+/* ============================================================
+   1. FYSIIKKA
+   ============================================================ */
+const FT = 0.3048, RHO_W = 1000, RHO_PB = 11340, G = 9.81;
+
+const DEFAULT_CFG = {
+  cdLine: 1.2,          // siiman poikittainen vastuskerroin (Re ~ 200-500)
+  cfLine: 0.004,        // siiman pituussuuntainen kitkakerroin
+  cdaWobbler: 0.0035,   // Cd*A 15 g vaapulle; skaalataan uistimen koon mukaan
+  cdaSpoon: 0.0018,     // Cd*A 15 g lusikalle
+  cdSinker: 0.50,       // pisaramainen lyijy
+  refSize: 15,          // g, koko jolle yllä olevat Cd*A pätevät
+  buoyFloat: -0.10,     // kelluva vaappu: nettopaino ylöspäin
+  buoySusp: 0.0,        // suspending: neutraali
+  buoySink: 0.88,       // metallinen lusikka
+  refSpeed: 4.0,        // km/h ~ 2,5 mph, Precision Trolling -datan vakionopeus
+  refLineDia: 0.343,    // 10 lb Berkley XT = 0.0135" = 0.343 mm
+  refLength: 40,
+  calib: 1.00, defDia: 0.45, defFt: 100
+};
+let CFG = Object.assign({}, DEFAULT_CFG);
+
+/* Siiman muoto: integroidaan uistimelta ylös venettä kohti. theta = kulma pystysuorasta.
+   Kullekin pätkälle lasketaan poikittainen painevastus (v*cos) ja pituussuuntainen
+   kitkavastus (v*sin). Molempien pystykomponentti vähentää alaspäin vaikuttavaa voimaa,
+   mikä loiventaa siimaa ylöspäin mentäessä — juuri siksi ohut siima ui syvemmälle. */
+function integrate(L, dLineM, v, Fv0, Fh0, steps){
+  steps = steps || 60;
+  if(!(L > 0)) return {depth:0, run:0, pts:[[0,0]]};
+  if(Fv0 <= 1e-7) return {depth:0, run:L, pts:[[0,0],[L,0]]};   // kelluu pinnassa
+  const ds = L/steps, per = Math.PI*dLineM;
+  let H = Math.max(Fh0, 0), V = Fv0, z = 0, x = 0;
+  const pts = [[0,0]];
+  for(let i=0;i<steps;i++){
+    const th = Math.atan2(H, Math.max(V, 1e-4));
+    const c = Math.cos(th), s = Math.sin(th);
+    z += ds*c; x += ds*s;
+    pts.push([x,z]);
+    const dN = 0.5*RHO_W*CFG.cdLine*dLineM*ds*Math.pow(v*c, 2);   // poikittainen
+    const dT = 0.5*RHO_W*CFG.cfLine*per*ds*Math.pow(v*s, 2);      // pituussuuntainen
+    H += dN*c + dT*s;
+    V -= dN*s + dT*c;
+  }
+  return {depth:z, run:x, pts:pts};
+}
+
+const BUOY = {float:'buoyFloat', susp:'buoySusp', sink:'buoySink'};
+function lureNet(lure){                       // N, + = alaspäin
+  return lure.weight/1000*G*CFG[BUOY[lure.buoy] || 'buoyFloat'];
+}
+function lureDrag(lure, v){                   // Cd*A skaalautuu uistimen koon mukaan
+  const base = lure.type === 'spoon' ? CFG.cdaSpoon : CFG.cdaWobbler;
+  const size = Math.pow(Math.max(1,lure.weight)/CFG.refSize, 2/3);
+  return 0.5*RHO_W*base*size*(lure.dragMul||1)*v*v;
+}
+function sinkerNet(g){ return g<=0 ? 0 : g/1000*G*(1 - RHO_W/RHO_PB); }
+function sinkerDrag(g, v){
+  if(g<=0) return 0;
+  const r = Math.cbrt(3*(g/1000/RHO_PB)/(4*Math.PI));
+  return 0.5*RHO_W*CFG.cdSinker*Math.PI*r*r*v*v;
+}
+function curveDepth(ft, curve){
+  if(ft<=0) return 0;
+  let a = curve[0];
+  for(let i=1;i<curve.length;i++){
+    const b = curve[i];
+    if(ft <= b.out){ return a.down + (ft-a.out)/(b.out-a.out)*(b.down-a.down); }
+    a = b;
+  }
+  return a.down;
+}
+
+/* Lipan tuottama alaspäin työntävä voima ratkaistaan puolitushaulla niin,
+   että vertailuolosuhteissa malli antaa uistimen ilmoitetun uintisyvyyden. */
+const lipCache = new Map();
+function lipForceRef(lure, lengthFt){
+  const key = lure.id+'|'+(lure.curve?lengthFt.toFixed(1):'x')+'|'+CFG.refSpeed+'|'+CFG.refLineDia+'|'+CFG.cdaWobbler+'|'+lure.buoy+'|'+(lure.dragMul||1);
+  if(lipCache.has(key)) return lipCache.get(key);
+  let F = 0;
+  if(lure.type !== 'spoon'){
+    const vR = CFG.refSpeed/3.6, dR = CFG.refLineDia/1000;
+    let L, target;
+    if(lure.curve){ L = lengthFt*FT; target = curveDepth(lengthFt, lure.curve)*FT; }
+    else { L = CFG.refLength; target = lure.dive; }
+    if(target > 0 && L > 0){
+      const base = lureNet(lure), drag = lureDrag(lure, vR);
+      let lo = 0, hi = 60;
+      for(let i=0;i<44;i++){
+        const mid = (lo+hi)/2;
+        if(integrate(L, dR, vR, base+mid, drag, 40).depth < target) lo = mid; else hi = mid;
+      }
+      F = (lo+hi)/2;
+    }
+  }
+  lipCache.set(key, F);
+  return F;
+}
+
+/* Koko vedon ratkaisu */
+function solve(lure, lengthFt, sinkerG, lineDiaMm, speedKmH){
+  const v = Math.max(0, speedKmH)/3.6;
+  const L = Math.max(0, lengthFt)*FT;
+  const vR = CFG.refSpeed/3.6;
+  const lip = lipForceRef(lure, lengthFt) * (vR>0 ? Math.pow(v/vR,2) : 0);
+  const Fv = sinkerNet(sinkerG) + lureNet(lure) + lip;
+  const Fh = sinkerDrag(sinkerG, v) + lureDrag(lure, v);
+  const r = integrate(L, lineDiaMm/1000, v, Fv, Fh, 60);
+  const k = CFG.calib;
+  const depth = Math.min(L, r.depth*k);
+  const scale = r.depth>0 ? depth/r.depth : 1;
+  const run = Math.min(r.run, Math.sqrt(Math.max(0, L*L - depth*depth)));
+  const rs = r.run>0 ? run/r.run : 1;
+  const pts = r.pts.map(p => [p[0]*rs, p[1]*scale]);
+  const ang = L>0 ? Math.acos(Math.min(1, depth/L))*180/Math.PI : 90;
+  return {depth:depth, run:run, angle:ang, pts:pts, L:L};
+}
+
+/* ============================================================
+   2. TILA
+   ============================================================ */
+/* Sukelluskäyrä Rapala Husky Jerk HJ08 -kortista (Precision Trolling, 10 lb Berkley XT
+   = 0,343 mm). Käytetään kelluvalle taimenvaapulle, jonka uinti vastaa tätä käyrää.
+   out = feet back, down = feet down. */
+const HJ08_CURVE = [ {out:0,down:0},{out:5,down:1},{out:14,down:2},{out:27,down:3},{out:46,down:4},{out:80,down:5},{out:120,down:6} ];
+
+const DEFAULT_LURES = [
+  {id:'l1', name:'Taimenvaappu 4,4 g',    type:'wobbler', buoy:'float', weight:4.4, dive:1.83, curve:HJ08_CURVE, dragMul:1},
+  {id:'l2', name:'Järvilohivaappu 2,8 g', type:'wobbler', buoy:'float', weight:2.8, dive:1.83, curve:HJ08_CURVE, dragMul:1},
+  {id:'l3', name:'Lusikka / raksi',       type:'spoon',   buoy:'sink',  weight:15,  dive:0,    curve:null, dragMul:1},
+  {id:'l4', name:'Syvännevaappu 3 m',     type:'wobbler', buoy:'float', weight:20,  dive:3.0,  curve:null, dragMul:1}
+];
+
+let lures = [], rods = {left:[], right:[]};
+let speed = 3.0, bottomD = 8, targetD = 6, gpsId = null, wake = null, lastFix = null;
+
+const PORT_COLORS = ['#ff5f57','#ff8f4d','#ff4d8f'];
+const STBD_COLORS = ['#3ddc84','#4cc3f0','#b3e04a'];
+const colorOf = (side, i) => (side==='left'?PORT_COLORS:STBD_COLORS)[i % 3];
+
+function store(k,v){ try{ localStorage.setItem(k, JSON.stringify(v)); }catch(e){} }
+function load(k,d){ try{ const s = localStorage.getItem(k); return s ? JSON.parse(s) : d; }catch(e){ return d; } }
+function saveAll(){ store('tp2_lures_v4',lures); store('tp2_rods',rods); store('tp2_cfg_v2',CFG); store('tp2_env',{bottomD:bottomD,targetD:targetD,speed:speed}); }
+
+function boot(){
+  lures = load('tp2_lures_v4', null) || DEFAULT_LURES.slice();
+  lures.forEach(l=>{ if(!l.buoy) l.buoy = (l.type==='spoon'?'sink':'float'); if(!l.dragMul) l.dragMul = 1; });
+  rods  = load('tp2_rods', null) || {left:[], right:[]};
+  CFG   = Object.assign({}, DEFAULT_CFG, load('tp2_cfg_v2', {}));
+  const env = load('tp2_env', {});
+  bottomD = env.bottomD ?? 8; targetD = env.targetD ?? 6; speed = env.speed ?? 3.0;
+  document.getElementById('spd').value = speed;
+  document.getElementById('bot').value = bottomD;
+  document.getElementById('tgt').value = targetD;
+  document.getElementById('cfgCalib').value = CFG.calib;
+  document.getElementById('cfgCdaW').value  = CFG.cdaWobbler;
+  document.getElementById('cfgCdaS').value  = CFG.cdaSpoon;
+  document.getElementById('cfgBuoy').value  = Math.round(-CFG.buoyFloat*100);
+  document.getElementById('cfgRefS').value  = CFG.refSpeed;
+  document.getElementById('cfgRefD').value  = CFG.refLineDia;
+  document.getElementById('cfgDia').value   = CFG.defDia;
+  document.getElementById('cfgFt').value    = CFG.defFt;
+  renderAll();
+}
+const fmt = (n,d)=> n.toFixed(d===undefined?1:d).replace('.', ',');
+const lureById = id => lures.find(l=>l.id===id) || lures[0];
+
+/* ============================================================
+   3. PROFIILIKUVA  (mittakaava 1:1, syvyys 0–12 m, siima 0–100 ft)
+   ============================================================ */
+const VW = 720, SURF = 100, MAXD = 12, MAXRUN = 100*FT;
+const X1 = 596, PXM = 540/MAXRUN, X0 = 556 - MAXRUN*PXM;   // px/m sama x- ja y-suunnassa
+const VH = SURF + MAXD*PXM + 30;
+const TIP = { left:[556, SURF-54], right:[574, SURF-38] };   // vapojen kärjet
+
+function boatSVG(){
+  // runko: perä x=598, keula x=690  => 5,2 m todellisessa mittakaavassa
+  return `
+  <g id="boat">
+    <path d="M596,66 L692,58 Q700,60 698,70 L692,86 Q684,106 664,110 L616,110 Q602,108 596,96 Z" fill="url(#hull)" stroke="#8fb6c9" stroke-width="1.2"/>
+    <path d="M596,96 L692,88" stroke="#0d202b" stroke-width="1"/>
+    <path d="M598,90 Q640,96 690,86" stroke="#ff5f57" stroke-width="2.5" fill="none" opacity=".85"/>
+    <path d="M646,66 L664,64 L670,50 L652,52 Z" fill="#bfe6f7" opacity=".55" stroke="#dff2fb" stroke-width="1"/>
+    <rect x="640" y="64" width="26" height="10" rx="2" fill="#123243"/>
+    <rect x="618" y="62" width="16" height="6" rx="2" fill="#1b4258"/>
+    <rect x="612" y="55" width="4" height="9" rx="1.5" fill="#1b4258"/>
+    <g stroke="#9fc6d8" stroke-width="1.4" fill="none">
+      <path d="M604,64 L560,44"/><path d="M606,66 L578,60"/>
+    </g>
+    <circle cx="556" cy="46" r="2" fill="#e7f4fb"/><circle cx="574" cy="62" r="2" fill="#e7f4fb"/>
+    <g>
+      <rect x="582" y="60" width="16" height="26" rx="3" fill="#16333f" stroke="#7fa6b8" stroke-width="1"/>
+      <rect x="586" y="86" width="8" height="20" fill="#16333f" stroke="#7fa6b8" stroke-width="1"/>
+      <path d="M586,106 L594,106 L596,120 L588,118 Z" fill="#16333f" stroke="#7fa6b8" stroke-width="1"/>
+      <path d="M580,116 L602,116" stroke="#7fa6b8" stroke-width="2"/>
+    </g>
+  </g>`;
+}
+
+function lureIcon(x, y, ang, color, type){
+  const r = `rotate(${ang.toFixed(1)} ${x} ${y})`;
+  if(type === 'spoon')
+    return `<g transform="${r}"><ellipse cx="${x}" cy="${y}" rx="9" ry="4" fill="${color}" stroke="#04121a" stroke-width="1"/></g>`;
+  return `<g transform="${r}">
+    <rect x="${x-11}" y="${y-4}" width="20" height="8" rx="4" fill="${color}" stroke="#04121a" stroke-width="1"/>
+    <path d="M${x+8},${y-3} l7,-5 l1,4 z" fill="#cfe9f5" stroke="#04121a" stroke-width=".8"/>
+    <circle cx="${x-13}" cy="${y}" r="2.2" fill="none" stroke="#04121a" stroke-width="1"/></g>`;
+}
+
+function drawProfile(){
+  const items = [];
+  ['left','right'].forEach(side=>{
+    rods[side].forEach((rod,i)=>{
+      const lure = lureById(rod.lureId);
+      const s = solve(lure, rod.ft, rod.w, rod.dia, speed);
+      items.push({side:side, i:i, rod:rod, lure:lure, s:s, color:colorOf(side,i)});
+    });
+  });
+
+  const bottomY = SURF + Math.min(MAXD, bottomD)*PXM;
+  let g = '';
+
+  // syvyysviivat
+  for(let d=2; d<=MAXD; d+=2){
+    const y = SURF + d*PXM;
+    g += `<line x1="${X0}" y1="${y}" x2="${X1}" y2="${y}" stroke="#12303f" stroke-width="1"/>
+          <text x="${X0+4}" y="${y-5}" font-size="13" fill="#5d7482">${d} m</text>`;
+  }
+  // etäisyysmerkit veneen perästä
+  for(let m=10; m<=30; m+=10){
+    const x = X1 - m*PXM;
+    if(x < X0) continue;
+    g += `<line x1="${x}" y1="${SURF}" x2="${x}" y2="${SURF+7}" stroke="#3b6d87" stroke-width="1.4"/>
+          <text x="${x}" y="${SURF+22}" text-anchor="middle" font-size="13" fill="#4c6b7c">${m} m</text>`;
+  }
+  // tavoitesyvyys
+  if(targetD > 0 && targetD <= MAXD){
+    const y = SURF + targetD*PXM;
+    g += `<line x1="${X0}" y1="${y}" x2="${X1}" y2="${y}" stroke="#4cc3f0" stroke-width="1.4" stroke-dasharray="7 6" opacity=".8"/>
+          <text x="330" y="${y-6}" font-size="13" fill="#4cc3f0">tavoite ${fmt(targetD)} m</text>`;
+  }
+  // pohja
+  if(bottomD > 0 && bottomD <= MAXD){
+    g += `<path d="M${X0},${bottomY+6} Q${X0+120},${bottomY-9} ${X0+250},${bottomY+2} T${X1},${bottomY-3} L${X1},${VH} L${X0},${VH} Z"
+            fill="#0a2129" stroke="#2a5164" stroke-width="1.5"/>`;
+  }
+
+  // siimat
+  items.forEach(it=>{
+    const [tx,ty] = TIP[it.side];
+    const pts = it.s.pts;               // pts[0] = uistin, viimeinen = vavan kärki
+    const lx = tx - it.s.run*PXM, ly = SURF + it.s.depth*PXM;
+    const px = pts[Math.min(pts.length-1, 3)];   // painon paikka: ~2 m uistimesta ylöspäin
+    const sx = tx - (it.s.run - px[0])*PXM, sy = SURF + (it.s.depth - px[1])*PXM;
+    const clipped = lx < X0;
+
+    const YMAX = SURF + MAXD*PXM;
+    g += `<polyline points="${pts.map(p=>{
+            const X = Math.max(X0-2, tx - (it.s.run - p[0])*PXM);
+            const Y = Math.min(YMAX, SURF + (it.s.depth - p[1])*PXM);
+            return X.toFixed(1)+','+Y.toFixed(1);
+          }).join(' ')}" fill="none" stroke="${it.color}" stroke-width="1.6" stroke-opacity=".9"/>`;
+    g += `<line x1="${tx}" y1="${ty}" x2="${tx}" y2="${SURF}" stroke="${it.color}" stroke-width="1.4" stroke-opacity=".55"/>`;
+    if(it.rod.w > 0 && sy < YMAX-4){
+      const wr = 3 + Math.min(5, it.rod.w/40);
+      g += `<ellipse cx="${Math.max(X0+4,sx).toFixed(1)}" cy="${sy.toFixed(1)}" rx="${wr}" ry="${wr*1.5}" fill="#9aa7ad" stroke="#04121a" stroke-width="1"/>`;
+    }
+    const deepOff = it.s.depth > MAXD;
+    const lyc = Math.min(ly, SURF + MAXD*PXM - 8);
+    if(deepOff){
+      g += `<text x="${Math.max(X0+40,lx)}" y="${lyc+4}" text-anchor="middle" font-size="15" font-weight="700" fill="${it.color}">▼ ${fmt(it.s.depth)} m</text>`;
+    }else if(!clipped){
+      g += lureIcon(lx, ly, 0, it.color, it.lure.type);
+      g += `<text x="${lx}" y="${ly-11}" text-anchor="middle" font-size="15" font-weight="700" fill="${it.color}">${fmt(it.s.depth)} m</text>`;
+    }else{
+      g += `<text x="${X0+34}" y="${ly-8}" font-size="14" font-weight="700" fill="${it.color}">◀ ${fmt(it.s.depth)} m</text>`;
+    }
+  });
+
+  const svg = `<svg viewBox="0 0 ${VW} ${VH}" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Vetouistelun sivuprofiili">
+    <defs>
+      <linearGradient id="sky" x1="0" y1="0" x2="0" y2="1">
+        <stop offset="0" stop-color="#0d2a3a"/><stop offset="1" stop-color="#1a4a60"/></linearGradient>
+      <linearGradient id="water" x1="0" y1="0" x2="0" y2="1">
+        <stop offset="0" stop-color="#10394d"/><stop offset="1" stop-color="#04121b"/></linearGradient>
+      <linearGradient id="hull" x1="0" y1="0" x2="0" y2="1">
+        <stop offset="0" stop-color="#e8f3f8"/><stop offset="0.55" stop-color="#b9d3e0"/><stop offset="1" stop-color="#6f93a5"/></linearGradient>
+    </defs>
+    <rect x="0" y="0" width="${VW}" height="${SURF}" fill="url(#sky)"/>
+    <rect x="0" y="${SURF}" width="${VW}" height="${VH-SURF}" fill="url(#water)"/>
+    ${g}
+    <line x1="0" y1="${SURF}" x2="${VW}" y2="${SURF}" stroke="#7ed0f0" stroke-width="2" stroke-opacity=".75"/>
+    ${boatSVG()}
+  </svg>`;
+
+  document.getElementById('profile').innerHTML = svg;
+
+  const deepest = items.reduce((m,it)=>Math.max(m,it.s.depth), 0);
+  document.getElementById('roDeep').textContent = fmt(deepest);
+  document.getElementById('roSpeed').textContent = fmt(speed);
+  document.getElementById('roBottom').textContent = bottomD>0 ? fmt(bottomD) : '–';
+  return items;
+}
+
+/* ============================================================
+   4. RENDER
+   ============================================================ */
+function renderRods(items){
+  ['left','right'].forEach(side=>{
+    const box = document.getElementById('rods-'+side);
+    const mine = items.filter(i=>i.side===side);
+    if(!mine.length){ box.innerHTML = '<div class="empty">Ei vapoja vedossa</div>'; return; }
+    box.innerHTML = mine.map(it=>{
+      const deep = bottomD>0 && it.s.depth > bottomD-0.3;
+      return `<div class="rod ${deep?'deep':''}" style="border-left-color:${it.color}">
+        <button class="x" onclick="delRod('${side}',${it.i})" aria-label="Poista">✕</button>
+        <div class="nm">${it.lure.name}</div>
+        <div class="pm">${it.rod.ft} ft · ${it.rod.w} g · ⌀${fmt(it.rod.dia,2)} · ${Math.round(it.s.run)} m perässä</div>
+        <div class="dp" style="color:${it.color}">${fmt(it.s.depth)} m</div>
+        ${deep?'<div class="alert">Pohjan tuntumassa</div>':''}
+      </div>`;
+    }).join('');
+  });
+}
+function renderLures(){
+  document.getElementById('lureList').innerHTML = lures.map((l,i)=>`
+    <div class="row"><div><div class="lb">${l.name}</div>
+      <div class="sub">${l.weight} g · ${l.buoy==='susp'?'suspending':(l.buoy==='sink'?'uppoava':'kelluva')} · ${l.curve ? 'sukelluskäyrä' : (l.dive>0 ? 'uinti '+fmt(l.dive)+' m' : 'ei omaa uintia')}${(l.dragMul||1)!==1?' · vastus ×'+fmt(l.dragMul,2):''}</div></div>
+      <div class="num"><button class="btn sm ghost" onclick="openLureSheet(${i})">Muokkaa</button>
+      <button class="btn sm ghost" style="color:var(--port)" onclick="delLure(${i})">Poista</button></div></div>`).join('');
+}
+function renderAll(){ const items = drawProfile(); renderRods(items); renderLures(); renderCalcLures(); renderCalibLures(); runCalc(); saveAll(); }
+
+/* ============================================================
+   5. VUOROVAIKUTUS
+   ============================================================ */
+function tab(id, el){
+  document.querySelectorAll('.tab').forEach(t=>t.classList.remove('on'));
+  document.querySelectorAll('nav button').forEach(b=>b.classList.remove('on'));
+  document.getElementById('tab-'+id).classList.add('on'); el.classList.add('on');
+}
+function setManualSpeed(v){ if(gpsId!==null) return; speed = parseFloat(v); renderAll(); }
+function setBottom(v){ bottomD = parseFloat(v); renderAll(); }
+function setTarget(v){ targetD = parseFloat(v); renderAll(); }
+function setCfg(k,v){ const n = parseFloat(v); if(!isNaN(n)){ CFG[k]=n; lipCache.clear(); renderAll(); } }
+function delRod(side,i){ rods[side].splice(i,1); renderAll(); }
+function delLure(i){ if(confirm('Poistetaanko '+lures[i].name+'?')){ lures.splice(i,1); renderAll(); } }
+function resetAll(){ if(confirm('Palautetaanko kaikki oletukset?')){ try{localStorage.clear();}catch(e){} location.reload(); } }
+function closeSheets(){ document.querySelectorAll('.sheet').forEach(s=>s.classList.remove('on')); }
+
+let sheetSide='left', sheetLure=null, sheetLureIdx=null, sheetType='wobbler', sheetBuoy='float';
+function openRodSheet(side){
+  sheetSide = side; sheetLure = lures[0] ? lures[0].id : null;
+  document.getElementById('rodSheetTitle').textContent = side==='left' ? 'Paapuurin vapa' : 'Tyyrpuurin vapa';
+  document.getElementById('rodFt').value = CFG.defFt;
+  document.getElementById('rodW').value = 0;
+  document.getElementById('rodDia').value = CFG.defDia;
+  document.getElementById('rodLures').innerHTML = lures.map(l=>`<button class="pill" data-id="${l.id}" onclick="pickLure('${l.id}')">${l.name}</button>`).join('');
+  document.getElementById('rodFtPills').innerHTML = [30,50,75,100,130,160].map(f=>`<button class="pill" onclick="setNum('rodFt',${f})">${f} ft</button>`).join('');
+  document.getElementById('rodWPills').innerHTML = [0,20,40,60,80,120].map(w=>`<button class="pill" onclick="setNum('rodW',${w})">${w} g</button>`).join('');
+  syncRodSheet();
+  document.getElementById('rodSheet').classList.add('on');
+}
+function pickLure(id){ sheetLure = id; syncRodSheet(); }
+function setNum(id,v){ document.getElementById(id).value = v; syncRodSheet(); }
+function syncRodSheet(){
+  const ft = parseFloat(document.getElementById('rodFt').value)||0;
+  const w  = parseFloat(document.getElementById('rodW').value)||0;
+  const d  = parseFloat(document.getElementById('rodDia').value)||0.30;
+  document.querySelectorAll('#rodLures .pill').forEach(p=>p.classList.toggle('on', p.dataset.id===sheetLure));
+  document.querySelectorAll('#rodFtPills .pill').forEach(p=>p.classList.toggle('on', parseFloat(p.textContent)===ft));
+  document.querySelectorAll('#rodWPills .pill').forEach(p=>p.classList.toggle('on', parseFloat(p.textContent)===w));
+  const s = solve(lureById(sheetLure), ft, w, d, speed);
+  document.getElementById('rodPreview').textContent = fmt(s.depth);
+}
+function commitRod(){
+  rods[sheetSide].push({
+    lureId: sheetLure,
+    ft: parseFloat(document.getElementById('rodFt').value)||0,
+    w:  parseFloat(document.getElementById('rodW').value)||0,
+    dia:parseFloat(document.getElementById('rodDia').value)||0.30
+  });
+  closeSheets(); renderAll();
+}
+
+function openLureSheet(idx){
+  sheetLureIdx = (idx===undefined) ? null : idx;
+  const l = sheetLureIdx===null ? {name:'',type:'wobbler',buoy:'float',weight:20,dive:2.5} : lures[sheetLureIdx];
+  sheetType = l.type; sheetBuoy = l.buoy || 'float';
+  document.getElementById('lureSheetTitle').textContent = sheetLureIdx===null ? 'Lisää uistin' : 'Muokkaa uistinta';
+  document.getElementById('luName').value = l.name;
+  document.getElementById('luW').value = l.weight;
+  document.getElementById('luD').value = l.dive;
+  document.getElementById('luType').innerHTML =
+    `<button class="pill" onclick="setLureType('wobbler')">Vaappu</button><button class="pill" onclick="setLureType('spoon')">Lusikka</button>`;
+  document.getElementById('luBuoy').innerHTML =
+    `<button class="pill" data-b="float" onclick="setLureBuoy('float')">Kelluva</button>
+     <button class="pill" data-b="susp" onclick="setLureBuoy('susp')">Suspending</button>
+     <button class="pill" data-b="sink" onclick="setLureBuoy('sink')">Uppoava</button>`;
+  setLureType(sheetType); setLureBuoy(sheetBuoy);
+  document.getElementById('lureSheet').classList.add('on');
+}
+function setLureType(t){
+  sheetType = t;
+  document.querySelectorAll('#luType .pill').forEach((p,i)=>p.classList.toggle('on',(i===0)===(t==='wobbler')));
+  if(t==='spoon') setLureBuoy('sink');
+}
+function setLureBuoy(b){
+  sheetBuoy = b;
+  document.querySelectorAll('#luBuoy .pill').forEach(p=>p.classList.toggle('on', p.dataset.b===b));
+}
+function commitLure(){
+  const o = {
+    id: sheetLureIdx===null ? 'l'+Date.now() : lures[sheetLureIdx].id,
+    name: document.getElementById('luName').value.trim() || 'Nimetön uistin',
+    type: sheetType,
+    buoy: sheetBuoy,
+    dragMul: sheetLureIdx===null ? 1 : (lures[sheetLureIdx].dragMul||1),
+    weight: parseFloat(document.getElementById('luW').value)||15,
+    dive: sheetType==='spoon' ? 0 : (parseFloat(document.getElementById('luD').value)||0),
+    curve: sheetLureIdx===null ? null : lures[sheetLureIdx].curve
+  };
+  if(sheetLureIdx===null) lures.push(o); else lures[sheetLureIdx] = o;
+  lipCache.clear(); closeSheets(); renderAll();
+}
+
+/* ============================================================
+   6. LASKIN
+   ============================================================ */
+let calcLureId = null;
+function renderCalcLures(){
+  if(!calcLureId || !lures.some(l=>l.id===calcLureId)) calcLureId = lures[0] && lures[0].id;
+  document.getElementById('calcLures').innerHTML = lures.map(l=>
+    `<button class="pill ${l.id===calcLureId?'on':''}" onclick="calcLureId='${l.id}';renderCalcLures();runCalc()">${l.name}</button>`).join('');
+}
+function runCalc(){
+  const ft = parseFloat(document.getElementById('calcFt').value)||0;
+  const d  = parseFloat(document.getElementById('calcDia').value)||0.30;
+  const w  = parseFloat(document.getElementById('calcW').value)||0;
+  const s  = parseFloat(document.getElementById('calcS').value)||0;
+  const lure = lureById(calcLureId);
+  document.getElementById('calcM').textContent = '= '+fmt(ft*FT)+' m';
+  const r = solve(lure, ft, w, d, s);
+  document.getElementById('calcDepth').textContent = fmt(r.depth);
+  document.getElementById('calcMeta').textContent = `${Math.round(r.run)} m veneen perässä · siima ${Math.round(r.angle)}° pinnasta`;
+
+  const lens = [30,50,75,100,130,160], speeds = [2.0,2.5,3.0,3.5,4.0];
+  let html = '<tr><th>ft</th>'+speeds.map(v=>`<th>${fmt(v)}</th>`).join('')+'</tr>';
+  lens.forEach(L=>{
+    html += `<tr><td>${L}</td>` + speeds.map(v=>{
+      const dep = solve(lure, L, w, d, v).depth;
+      const hot = bottomD>0 && dep>bottomD-0.3;
+      return `<td style="${hot?'color:var(--warn)':''}">${fmt(dep)}</td>`;
+    }).join('') + '</tr>';
+  });
+  document.getElementById('calcTable').innerHTML = html;
+}
+
+
+function renderCalibLures(){
+  const sel = document.getElementById('kLure');
+  const keep = sel.value;
+  sel.innerHTML = lures.map(l=>`<option value="${l.id}">${l.name}</option>`).join('');
+  if(lures.some(l=>l.id===keep)) sel.value = keep;
+}
+function calibrateFromMeasurement(){
+  const lure = lureById(document.getElementById('kLure').value);
+  const ft = parseFloat(document.getElementById('kFt').value)||0;
+  const w  = parseFloat(document.getElementById('kW').value)||0;
+  const dia= parseFloat(document.getElementById('kDia').value)||0.30;
+  const s  = parseFloat(document.getElementById('kS').value)||0;
+  const tgt= parseFloat(document.getElementById('kD').value)||0;
+  const out = document.getElementById('kResult');
+  if(!(ft>0 && s>0 && tgt>0)){ out.textContent = 'Täytä siiman pituus, nopeus ja mitattu syvyys.'; return; }
+  const orig = lure.dragMul || 1;
+  const depthAt = m => { lure.dragMul = m; lipCache.clear(); return solve(lure, ft, w, dia, s).depth; };
+  let lo = 0.05, hi = 40;
+  if(depthAt(hi) > tgt){ lure.dragMul = orig; lipCache.clear();
+    out.textContent = 'Malli ei pääse näin matalalle edes suurella vastuksella. Tarkista paino ja siiman pituus.'; return; }
+  if(depthAt(lo) < tgt){ lure.dragMul = orig; lipCache.clear();
+    out.textContent = 'Malli ei yllä näin syvälle. Tarvitset enemmän painoa, pidemmän siiman tai hitaamman vauhdin.'; return; }
+  for(let i=0;i<44;i++){ const mid=(lo+hi)/2; if(depthAt(mid) > tgt) lo = mid; else hi = mid; }
+  lure.dragMul = (lo+hi)/2;
+  lipCache.clear();
+  out.textContent = `${lure.name}: vetovastus ×${fmt(lure.dragMul,2)} (oli ×${fmt(orig,2)}). Kaikki tämän uistimen luvut päivittyivät.`;
+  renderAll();
+}
+
+/* ============================================================
+   7. GPS
+   ============================================================ */
+function toggleGPS(){
+  const btn = document.getElementById('gpsBtn'), chip = document.getElementById('gpsChip');
+  if(gpsId !== null){ stopGPS(); return; }
+  if(!('geolocation' in navigator)){ chip.textContent = 'GPS ei tuettu'; return; }
+  btn.textContent = 'Haetaan…'; chip.textContent = 'Haetaan sijaintia';
+  gpsId = navigator.geolocation.watchPosition(onFix, ()=>{ chip.textContent='GPS epäonnistui'; stopGPS(); },
+    {enableHighAccuracy:true, maximumAge:1000, timeout:20000});
+  btn.classList.add('on'); btn.textContent = 'Sammuta GPS';
+  if(navigator.wakeLock) navigator.wakeLock.request('screen').then(w=>wake=w).catch(()=>{});
+}
+function stopGPS(){
+  if(gpsId!==null) navigator.geolocation.clearWatch(gpsId);
+  gpsId = null; lastFix = null;
+  if(wake){ try{wake.release();}catch(e){} wake = null; }
+  const btn = document.getElementById('gpsBtn');
+  btn.classList.remove('on'); btn.textContent = 'Käynnistä GPS';
+  document.getElementById('gpsChip').classList.remove('live');
+  document.getElementById('gpsChip').textContent = 'GPS pois';
+  speed = parseFloat(document.getElementById('spd').value)||0;
+  renderAll();
+}
+function onFix(pos){
+  let v = pos.coords.speed;
+  if(v === null || isNaN(v)){                    // laite ei anna nopeutta: lasketaan sijainneista
+    if(lastFix){
+      const dt = (pos.timestamp - lastFix.t)/1000;
+      if(dt > 0.5){
+        const R = 6371000, toR = Math.PI/180;
+        const dLa = (pos.coords.latitude-lastFix.la)*toR;
+        const dLo = (pos.coords.longitude-lastFix.lo)*toR;
+        const a = Math.sin(dLa/2)**2 + Math.cos(lastFix.la*toR)*Math.cos(pos.coords.latitude*toR)*Math.sin(dLo/2)**2;
+        v = (2*R*Math.asin(Math.min(1,Math.sqrt(a))))/dt;
+      } else v = null;
+    } else v = null;
+  }
+  lastFix = {la:pos.coords.latitude, lo:pos.coords.longitude, t:pos.timestamp};
+  if(v === null || isNaN(v)) return;
+  const kmh = Math.max(0, v*3.6);
+  speed = speed*0.65 + kmh*0.35;                 // tasoitus, GPS-nopeus heittelee
+  const chip = document.getElementById('gpsChip');
+  chip.classList.add('live');
+  chip.textContent = 'GPS ' + fmt(speed) + ' km/h';
+  drawProfile(); renderRods(collect());
+}
+function collect(){
+  const items = [];
+  ['left','right'].forEach(side=> rods[side].forEach((rod,i)=>{
+    const lure = lureById(rod.lureId);
+    items.push({side:side,i:i,rod:rod,lure:lure,s:solve(lure,rod.ft,rod.w,rod.dia,speed),color:colorOf(side,i)});
+  }));
+  return items;
+}
+
+document.addEventListener('visibilitychange', ()=>{ if(!document.hidden && gpsId!==null && navigator.wakeLock)
+  navigator.wakeLock.request('screen').then(w=>wake=w).catch(()=>{}); });
+
+boot();
+
+/* Offline-käyttö: rekisteröidään service worker vain oikealta palvelimelta. */
+if('serviceWorker' in navigator && location.protocol.startsWith('http')){
+  window.addEventListener('load', ()=> navigator.serviceWorker.register('sw.js').catch(()=>{}));
+}
+</script>
+</body>
+</html>
