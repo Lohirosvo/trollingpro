@@ -122,7 +122,7 @@ nav button.on{color:var(--sky)}
 <body>
 
 <header>
-  <div class="brand">Trolling<em>Pro</em> 2 <span style="font-size:10px;color:var(--ink-faint);font-weight:400">v2.4</span></div>
+  <div class="brand">Trolling<em>Pro</em> 2 <span style="font-size:10px;color:var(--ink-faint);font-weight:400">v2.5</span></div>
   <div id="gpsChip" class="chip">GPS pois</div>
 </header>
 
@@ -273,14 +273,14 @@ nav button.on{color:var(--sky)}
     <div class="sheet-head"><b id="rodSheetTitle">Lisää vapa</b><button class="btn sm ghost" onclick="closeSheets()">Sulje</button></div>
     <div class="sheet-body">
       <div class="card"><h3>Uistin</h3><div id="rodLures" class="pills"></div></div>
-      <div class="card"><h3>Siimaa ulos</h3>
-        <div id="rodFtPills" class="pills"></div>
-        <div class="row"><div class="lb">Tarkka määrä</div><div class="num"><input id="rodFt" type="number" value="100" step="5" min="0" oninput="syncRodSheet()"><span>ft</span></div></div>
-      </div>
-      <div class="card"><h3>Dipsy Diver</h3>
+      <div class="card" style="border-color:#5a7a88"><h3 style="color:#c9d4da">Syvennin</h3>
         <div id="rodDiverPills" class="pills"></div>
         <div id="rodDiverLine" class="pills" style="display:none;border-top:1px solid var(--line-soft)"></div>
         <p class="hint" id="rodDiverHint" style="display:none">Syvyys = siimaa ulkona jaettuna suhdeluvulla. Sama malli kuin uistelututkan laskurissa. Luhr Jensenin taulukkoa ei käytetä, koska se pätee O-rengas paikallaan.</p>
+      </div>
+      <div class="card"><h3>Siimaa ulos</h3>
+        <div id="rodFtPills" class="pills"></div>
+        <div class="row"><div class="lb">Tarkka määrä</div><div class="num"><input id="rodFt" type="number" value="100" step="5" min="0" oninput="syncRodSheet()"><span>ft</span></div></div>
       </div>
       <div class="card" id="rodWeightCard"><h3>Lyijypaino</h3>
         <div id="rodWPills" class="pills"></div>
@@ -289,7 +289,7 @@ nav button.on{color:var(--sky)}
       <div class="card"><h3>Siima</h3>
         <div class="row"><div class="lb">Paksuus</div><div class="num"><input id="rodDia" type="number" value="0.45" step="0.01" min="0.05" oninput="syncRodSheet()"><span>mm</span></div></div>
       </div>
-      <div class="card"><div class="row res"><div class="lb">Arvioitu syvyys</div><div class="num"><b id="rodPreview">0,0</b><span style="color:var(--stbd)">m</span></div></div></div>
+      <div class="card"><div class="row res"><div><div class="lb">Arvioitu syvyys</div><div class="sub" id="rodPreviewTapa"></div></div><div class="num"><b id="rodPreview">0,0</b><span style="color:var(--stbd)">m</span></div></div></div>
     </div>
     <div class="sheet-foot"><button class="btn wide go" onclick="commitRod()">Laske vetoon</button></div>
   </div>
@@ -1036,10 +1036,15 @@ function openRodSheet(side){
   document.getElementById('rodWPills').innerHTML = [0,20,40,60,80,120].map(w=>`<button class="pill" onclick="setNum('rodW',${w})">${w} g</button>`).join('');
   sheetDiver = false; sheetDSetting = 0; sheetDLine = 'mono';
   document.getElementById('rodDiverPills').innerHTML =
-    `<button class="pill" data-d="off" onclick="setDiver(false)">Ei diveriä</button>` +
-    [0,1,2,3].map(s=>`<button class="pill" data-d="${s}" onclick="setDiver(true,${s})">Asetus ${s}</button>`).join('');
+    `<button class="pill" data-d="off" onclick="setDiver(false)">Vapaa uinti</button>` +
+    [0,1,2,3].map(s=>`<button class="pill" data-d="${s}" onclick="setDiver(true,${s})">Dipsy ${s}</button>`).join('');
   document.getElementById('rodDiverLine').innerHTML =
     ['mono','kuitu'].map(t=>`<button class="pill" data-l="${t}" onclick="setDiverLine('${t}')">${t==='kuitu'?'Kuitu':'Mono'}</button>`).join('');
+  // KORJATTU 5.9.2026: pelkkä sheetDiver=false ei riittänyt. Näkyvyystilat
+  // (painokortti, siimatyyppi, ohje) jäivät edellisen vavan asetuksiin, joten
+  // diverin jälkeen lisätyltä tavalliselta vavalta puuttui lyijypainon kortti.
+  // Kutsutaan setDiver(false), joka nollaa kaikki kolme kerralla.
+  setDiver(false);
   syncRodSheet();
   document.getElementById('rodSheet').classList.add('on');
 }
@@ -1071,6 +1076,10 @@ function syncRodSheet(){
     ? solveDiver({ft:ft, dia:d, dSetting:sheetDSetting, dLineType:sheetDLine}, speed)
     : solve(lureById(sheetLure), ft, w, d, speed);
   document.getElementById('rodPreview').textContent = fmt(s.depth);
+  const eTapa = document.getElementById('rodPreviewTapa');
+  if(eTapa) eTapa.textContent = sheetDiver
+    ? `Dipsy ${sheetDSetting}, ${sheetDLine==='kuitu'?'kuitu':'mono'} · ${Math.round(s.run)} m perässä`
+    : `vapaa uinti · ${Math.round(s.run)} m perässä`;
 }
 function commitRod(){
   rods[sheetSide].push({
