@@ -122,7 +122,7 @@ nav button.on{color:var(--sky)}
 <body>
 
 <header>
-  <div class="brand">Trolling<em>Pro</em> 2 <span style="font-size:10px;color:var(--ink-faint);font-weight:400">v2.5</span></div>
+  <div class="brand">Trolling<em>Pro</em> 2 <span style="font-size:10px;color:var(--ink-faint);font-weight:400">v2.6</span></div>
   <div id="gpsChip" class="chip">GPS pois</div>
 </header>
 
@@ -162,7 +162,7 @@ nav button.on{color:var(--sky)}
         <button class="btn sm" onclick="lisaaTakila()">Lisää takila</button>
         <button class="btn sm ghost" onclick="poistaTakila()">Poista viimeinen</button>
       </div>
-      <p class="hint">Kuula uppoaa omalla painollaan; vauhti työntää sitä taaksepäin (blowback). Uistin kulkee vapauttajan syvyydessä — pitkä peruke ja kelluva vaappu nostavat sitä jonkin verran, mutta sitä ei mallinneta.</p>
+      <p class="hint">Kuula uppoaa omalla painollaan; vauhti työntää sitä taaksepäin (blowback). Vapautuspituus on siima vapauttajasta uistimeen — uistin laskeutuu siitä alaspäin oman uintinsa mukaan. Jos kaksi uistinta päätyy alle 1,2 m päähän toisistaan, kuvaajaan tulee takkuvaroitus. Se raja on arvio, ei mittaus.</p>
     </div>
 
     <div class="sides">
@@ -610,6 +610,70 @@ function takilaVapauttaja(tk, offsetFt){
   return { depth: Math.max(0, tk.depth - p[1]), run: Math.max(0, tk.run - p[0]) };
 }
 
+/* UISTIMEN PAIKKA VAPAUTTAJAN TAKANA — lisätty 5.9.2026.
+   Uistin ei ole vapauttajassa kiinni vaan roikkuu siitä taaksepäin oman
+   siimansa varassa. Siima kaartuu samalla tavalla kuin muutkin siimat, ja
+   uistin päätyy vapautuspisteen ALApuolelle ja taakse — kuinka paljon,
+   riippuu vieheestä ja vapautuspituudesta.
+
+   TÄMÄ ON SE MIKÄ RATKAISEE TAKUN: jos ylemmällä vapauttajalla on pitkä siima
+   ja syvälle uiva vaappu, se voi laskeutua alemman vapauttajan uistimen tasolle
+   ja etäisyydelle. Silloin ne kohtaavat.
+
+   Sama solve() kuin veneen takaa vedettäville — vetopiste on vain vapauttaja
+   eikä vavan kärki. */
+function takilaUistimenPaikka(vp, lure, vapFt, dia, speedKmH){
+  if(!lure || !(vapFt > 0)) return { depth:vp.depth, run:vp.run, pts:[[0,0]], oma:null };
+  const oma = solve(lure, vapFt, 0, dia || 0.35, speedKmH);
+  return {
+    depth: vp.depth + oma.depth,      // vapauttajasta alaspäin
+    run:   vp.run   + oma.run,        // vapauttajasta taaksepäin
+    pts:   oma.pts,
+    oma:   oma
+  };
+}
+
+/* TAKKURISKI — kaksi tapaa, koska ne ovat eri ilmiöitä.
+
+   1) SIIMAT RISTEÄVÄT. Tämä on takun geometrinen määritelmä: jos ylemmän
+      vapauttajan siima kulkee alemman siiman läpi, ne ovat kietoutuneet.
+      Tyypillinen syy on liian pitkä siima ylemmällä vapauttajalla — se
+      laskeutuu alemman tason alle ennen kuin ehtii taakse.
+
+   2) UISTIMET LÄHEKKÄIN. Vaikka siimat eivät risteä, kaksi viehettä alle
+      1,2 m päässä voi koskettaa toisiaan aallokossa tai käännöksessä.
+      Raja on ARVIO, ei mittaus.
+
+   Ensimmäinen versio tutki vain päätepisteiden etäisyyttä. Testi paljasti että
+   se ei laukea käytännössä koskaan: oikealla vapauttajavälillä uistimet pysyvät
+   noin vapauttajavälin päässä toisistaan riippumatta siimapituudesta. Se oli
+   oikea havainto mutta väärä mittari. */
+const TAKKU_RAJA_M = 1.2;
+
+// Janojen leikkaus. Palauttaa true jos ne oikeasti risteävät.
+function janatRisteaa(a1, a2, b1, b2){
+  const d = (p,q,r) => (q.x-p.x)*(r.y-p.y) - (q.y-p.y)*(r.x-p.x);
+  const d1 = d(b1,b2,a1), d2 = d(b1,b2,a2), d3 = d(a1,a2,b1), d4 = d(a1,a2,b2);
+  return ((d1>0&&d2<0)||(d1<0&&d2>0)) && ((d3>0&&d4<0)||(d3<0&&d4>0));
+}
+
+function takkuRiski(paikat){
+  const parit = [];
+  for(let i=0;i<paikat.length;i++)
+    for(let j=i+1;j<paikat.length;j++){
+      const A = paikat[i], B = paikat[j];
+      // Siima kulkee vapauttajasta uistimeen. x = etäisyys taakse, y = syvyys.
+      const risteaa = (A.vp && B.vp) && janatRisteaa(
+        {x:A.vp.run, y:A.vp.depth}, {x:A.run, y:A.depth},
+        {x:B.vp.run, y:B.vp.depth}, {x:B.run, y:B.depth});
+      const d = Math.hypot(A.run - B.run, A.depth - B.depth);
+      if(risteaa || d < TAKKU_RAJA_M){
+        parit.push({ a:i, b:j, etaisyys:d, risteaa:risteaa });
+      }
+    }
+  return parit;
+}
+
 /* Takilan kuvake: pyöreä kuula ja lyhyt evä, kuten oikeassa takilakuulassa. */
 function takilaIcon(x, y, color){
   return `<g>
@@ -653,7 +717,7 @@ let lures = [], rods = {left:[], right:[]};
 let takilat = [];
 function oletusTakila(){
   return { ft: 60, kg: TAKILA_KUULA_KG, dia: TAKILA_VAIJERI_MM,
-           vali: TAKILA_VALI_FT, uistimet: [{ lureId: null }] };
+           vali: TAKILA_VALI_FT, uistimet: [{ lureId: null, vapFt: 20 }] };
 }
 let speed = 3.0, bottomD = 8, targetD = 6, gpsId = null, wake = null, lastFix = null;
 
@@ -850,16 +914,45 @@ function drawProfile(){
             const Y = Math.min(YMAXT, SURF + (tk.depth - p[1])*PXM);
             return X.toFixed(1)+','+Y.toFixed(1);
           }).join(' ')}" fill="none" stroke="${vari}" stroke-width="2.2" stroke-opacity=".75"/>`;
-    // vapauttajat ja niiden uistimet
+    // vapauttajat, niiden siimat ja uistimet
+    const paikat = [];
     tak.uistimet.forEach((u,ui)=>{
       const off = ui * (tak.vali || TAKILA_VALI_FT);
       const vp = takilaVapauttaja(tk, off);
-      const vx = tx - vp.run*PXM, vy = SURF + vp.depth*PXM;
-      if(vy > YMAXT || vx < X0) return;
-      if(ui > 0) g += vapauttajaIcon(vx, vy, vari);
       const lu = u.lureId ? lureById(u.lureId) : null;
-      if(lu) g += lureIcon(vx - 16, vy, 0, vari, lu.type);
-      g += `<text x="${vx + 10}" y="${vy + 4}" font-size="13" font-weight="700" fill="${vari}">${fmt(vp.depth)} m</text>`;
+      const pk = takilaUistimenPaikka(vp, lu, u.vapFt || 0, tak.uDia || 0.35, speed);
+      paikat.push({ ...pk, ui:ui, lure:lu, vp:vp });
+
+      const vx = tx - vp.run*PXM, vy = SURF + vp.depth*PXM;
+      if(vy <= YMAXT && vx >= X0){
+        g += vapauttajaIcon(vx, vy, vari);
+        g += `<text x="${vx + 9}" y="${vy - 6}" font-size="11" fill="${vari}" opacity=".85">${fmt(vp.depth)} m</text>`;
+      }
+
+      // Uistimen oma siima vapauttajasta taaksepäin, KAARTUVANA.
+      if(lu && pk.oma && pk.oma.pts.length > 1){
+        const lx = tx - pk.run*PXM, ly = SURF + pk.depth*PXM;
+        g += `<polyline points="${pk.oma.pts.map(p=>{
+                const X = Math.max(X0-2, lx + (pk.oma.run - p[0])*PXM);
+                const Y = Math.min(YMAXT, ly - (pk.oma.depth - p[1])*PXM);
+                return X.toFixed(1)+','+Y.toFixed(1);
+              }).join(' ')}" fill="none" stroke="${vari}" stroke-width="1.3" stroke-opacity=".7"/>`;
+        if(ly <= YMAXT && lx >= X0){
+          g += lureIcon(lx, ly, 0, vari, lu.type);
+          g += `<text x="${lx}" y="${ly - 11}" text-anchor="middle" font-size="13" font-weight="700" fill="${vari}">${fmt(pk.depth)} m</text>`;
+        }
+      }
+    });
+
+    // TAKKUVAROITUS: kaksi uistinta liian lähellä toisiaan.
+    takkuRiski(paikat).forEach(par=>{
+      const a2 = paikat[par.a], b2 = paikat[par.b];
+      const mx = tx - (a2.run + b2.run)/2*PXM, my = SURF + (a2.depth + b2.depth)/2*PXM;
+      if(my > YMAXT || mx < X0) return;
+      g += `<circle cx="${mx.toFixed(1)}" cy="${my.toFixed(1)}" r="15" fill="none"
+              stroke="var(--warn)" stroke-width="2" stroke-dasharray="4 3" opacity=".9"/>`;
+      g += `<text x="${mx.toFixed(1)}" y="${(my - 20).toFixed(1)}" text-anchor="middle"
+              font-size="13" font-weight="700" fill="var(--warn)">${par.risteaa ? 'siimat ristissä' : 'takku'}</text>`;
     });
     if(ky <= YMAXT && kx >= X0) g += takilaIcon(kx, ky, vari);
     else g += `<text x="${Math.max(X0+40,kx)}" y="${YMAXT-6}" text-anchor="middle" font-size="14" font-weight="700" fill="${vari}">▼ ${fmt(tk.depth)} m</text>`;
@@ -954,12 +1047,36 @@ function renderTakilat(){
   box.innerHTML = takilat.map((tak,i)=>{
     const tk = solveTakila(tak, speed);
     const vari = TAKILA_VARIT[i % TAKILA_VARIT.length];
+    const paikat = tak.uistimet.map((u,ui)=>{
+      const vp = takilaVapauttaja(tk, ui*(tak.vali||TAKILA_VALI_FT));
+      const lu = u.lureId ? lureById(u.lureId) : null;
+      return { ...takilaUistimenPaikka(vp, lu, u.vapFt||0, tak.uDia||0.35, speed), vp:vp };
+    });
+    const takut = takkuRiski(paikat);
     const rivit = tak.uistimet.map((u,ui)=>{
       const vp = takilaVapauttaja(tk, ui*(tak.vali||TAKILA_VALI_FT));
-      const nimi = u.lureId ? lureById(u.lureId).name : 'ei uistinta';
-      return `<div style="display:flex;justify-content:space-between;gap:8px;font-size:11px;color:var(--ink-faint);padding:2px 0">
-        <span>${ui===0?'kuulassa':(ui*(tak.vali||TAKILA_VALI_FT))+' ft ylempänä'} · ${nimi}</span>
-        <b style="color:${vari}">${fmt(vp.depth)} m</b></div>`;
+      const pk = paikat[ui];
+      const takussa = takut.some(t2=>t2.a===ui||t2.b===ui);
+      return `<div style="padding:4px 0;border-top:1px solid var(--line-soft)">
+        <div style="display:flex;justify-content:space-between;gap:6px;align-items:center">
+          <span style="font-size:11px;color:var(--ink-faint)">${ui===0?'kuulassa':(ui*(tak.vali||TAKILA_VALI_FT))+' ft ylempänä'} · vapautus ${fmt(vp.depth)} m</span>
+          <b style="color:${takussa?'var(--warn)':vari};font-size:15px">${fmt(pk.depth)} m</b>
+        </div>
+        <div style="display:flex;gap:6px;align-items:center;margin-top:3px">
+          <select style="flex:1;background:var(--sea-900);border:1px solid var(--line);color:var(--ink);border-radius:5px;padding:4px 6px;font-size:12px"
+                  onchange="setUistin(${i},${ui},this.value)">
+            <option value="">ei uistinta</option>
+            ${lures.map(l=>`<option value="${l.id}" ${u.lureId===l.id?'selected':''}>${l.name}</option>`).join('')}
+          </select>
+          <span style="font-size:11px;color:var(--ink-faint)">vapautus
+            <input type="number" value="${u.vapFt||0}" step="5" min="0" style="width:52px;background:var(--sea-900);border:1px solid var(--line);color:var(--ink);border-radius:5px;padding:3px 5px;text-align:right"
+                   oninput="setVapautus(${i},${ui},this.value)"> ft</span>
+        </div>
+        ${takussa?`<div style="font-size:10.5px;color:var(--warn);margin-top:2px">⚠ ${
+          takut.find(t2=>t2.a===ui||t2.b===ui).risteaa
+            ? 'siima risteää toisen kanssa — lyhennä vapautusta'
+            : 'uistimet lähekkäin'}</div>`:''}
+      </div>`;
     }).join('');
     return `<div class="row" style="display:block">
       <div style="display:flex;justify-content:space-between;align-items:center;gap:8px">
@@ -984,6 +1101,12 @@ function renderTakilat(){
     </div>`;
   }).join('');
 }
+function setUistin(i,ui,id){ takilat[i].uistimet[ui].lureId = id || null; renderAll(); }
+function setVapautus(i,ui,v){
+  const n = parseFloat(v);
+  if(!isNaN(n) && n >= 0) takilat[i].uistimet[ui].vapFt = n;
+  renderAll();
+}
 function setTakila(i,k,v){
   const n = parseFloat(v);
   if(!isNaN(n)) takilat[i][k] = n;
@@ -991,7 +1114,7 @@ function setTakila(i,k,v){
 }
 function setUistimia(i,n){
   const cur = takilat[i].uistimet;
-  while(cur.length < n) cur.push({lureId: lures[0] ? lures[0].id : null});
+  while(cur.length < n) cur.push({lureId: lures[0] ? lures[0].id : null, vapFt: 20});
   while(cur.length > n) cur.pop();
   renderAll();
 }
