@@ -122,7 +122,7 @@ nav button.on{color:var(--sky)}
 <body>
 
 <header>
-  <div class="brand">Trolling<em>Pro</em> 2 <span style="font-size:10px;color:var(--ink-faint);font-weight:400">v3.0</span></div>
+  <div class="brand">Trolling<em>Pro</em> 2 <span style="font-size:10px;color:var(--ink-faint);font-weight:400">v3.2</span></div>
   <div id="gpsChip" class="chip">GPS pois</div>
 </header>
 
@@ -135,6 +135,8 @@ nav button.on{color:var(--sky)}
         <div id="nakymaNapit" style="display:flex;gap:6px">
           <button class="pill on" data-n="sivu" onclick="vaihdaNakyma('sivu')" style="padding:4px 10px;font-size:12px">Sivulta</button>
           <button class="pill" data-n="ylhaalta" onclick="vaihdaNakyma('ylhaalta')" style="padding:4px 10px;font-size:12px">Ylhäältä</button>
+          <button class="pill" data-n="kala" onclick="vaihdaNakyma('kala')" style="padding:4px 10px;font-size:12px">Kalan silmin</button>
+          <button class="pill" id="kalaPuoliNappi" onclick="vaihdaKalanPuoli()" style="padding:4px 10px;font-size:12px;display:none">⇄ puoli</button>
         </div>
         <span id="nakymaSelite">Mittakaava 1:1</span>
       </div>
@@ -157,6 +159,12 @@ nav button.on{color:var(--sky)}
       <input id="bot" type="range" min="0" max="12" step="0.5" value="8" oninput="setBottom(this.value)">
       <label for="tgt">Tavoite</label>
       <input id="tgt" type="range" min="0" max="12" step="0.5" value="6" oninput="setTarget(this.value)">
+    </div>
+
+    <div class="card" style="margin-top:10px">
+      <h3>Plaanarit</h3>
+      <div id="plaanariTila"></div>
+      <p class="hint">Ensimmäinen plaanarivapa on uloin ja menee kelkkaan. Seuraavat tulevat 20 jalan välein sisäänpäin, ja kelkka siirtyy ulommas. Veneen lähin on säädettävissä 6–12 m, jotta Dipsyt mahtuvat sen sisäpuolelle.</p>
     </div>
 
     <div class="card" style="margin-top:10px">
@@ -277,7 +285,7 @@ nav button.on{color:var(--sky)}
     <div class="sheet-head"><b id="rodSheetTitle">Lisää vapa</b><button class="btn sm ghost" onclick="closeSheets()">Sulje</button></div>
     <div class="sheet-body">
       <div class="card"><h3>Uistin</h3><div id="rodLures" class="pills"></div></div>
-      <div class="card" style="border-color:#5a7a88"><h3 style="color:#c9d4da">Syvennin</h3>
+      <div class="card" style="border-color:#5a7a88"><h3 style="color:#c9d4da">Kiinnitys</h3>
         <div id="rodDiverPills" class="pills"></div>
         <div id="rodDiverLine" class="pills" style="display:none;border-top:1px solid var(--line-soft)"></div>
         <p class="hint" id="rodDiverHint" style="display:none">Syvyys = siimaa ulkona jaettuna suhdeluvulla. Sama malli kuin uistelututkan laskurissa. Luhr Jensenin taulukkoa ei käytetä, koska se pätee O-rengas paikallaan.</p>
@@ -751,28 +759,34 @@ function takilaSijainnit(maara){
 
 /* Plaanarin uistimien etäisyydet laidasta, kun siimoja on n kpl.
    sisin = käyttäjän säätämä 6-12 m. */
+/* JÄRJESTYS: ensimmäinen syötetty uistin on ULOIN ja kiinnittyy suoraan
+   kelkkaan. Seuraavat tulevat 20 jalan välein sisäänpäin, ja kelkka siirtyy
+   ulommas jokaisesta lisätystä. Veneen lähin on säädettävä 6-12 m, jotta
+   Dipsyt mahtuvat sen sisäpuolelle.
+   Korjattu 5.9.2026 — aiemmin järjestys oli päinvastainen. */
 function plaanariEtaisyydet(n, sisin){
   if(!(n > 0)) return [];
-  const ensimmainen = Math.max(6, Math.min(12, sisin || 8));
-  const ulos = [ensimmainen];
-  // Toisesta lähtien 15 m ja siitä 20 jalan välein. KATKAISTAAN kun 50 m tulee
-  // vastaan: aiempi versio pakkasi loput samaan 50 metriin päällekkäin, mikä
-  // näytti siltä että ne mahtuvat vaikka eivät mahdu.
-  for(let i=1;i<n;i++){
-    const d = 15 + (i-1)*PLAANARI_ASKEL;
-    if(d > PLAANARI_MAX) break;
-    ulos.push(d);
+  const lahin = Math.max(6, Math.min(12, sisin || 8));
+  const ulos = [];
+  for(let i=0;i<n;i++){
+    // i = 0 on uloin, i = n-1 on veneen lähin
+    ulos.push(Math.min(PLAANARI_MAX, lahin + (n-1-i)*PLAANARI_ASKEL));
   }
   return ulos;
+}
+
+/* Kelkan etäisyys laidasta: uloimman uistimen kohdalla. */
+function plaanariKelkka(n, sisin){
+  const e = plaanariEtaisyydet(n, sisin);
+  return e.length ? e[0] : 0;
 }
 
 /* Montako uistinta selkäsiimaan mahtuu 20 jalan välein 50 metriin asti.
    Käyttöliittymä rajaa valinnan tähän, jottei uistimia voi lisätä
    paikkoihin joita ei ole. */
-function plaanariMaksimiUistimet(){
-  let n = 1;
-  for(let d = 15; d <= PLAANARI_MAX; d += PLAANARI_ASKEL) n++;
-  return n;
+function plaanariMaksimiUistimet(sisin){
+  const lahin = Math.max(6, Math.min(12, sisin || 8));
+  return Math.max(1, 1 + Math.floor((PLAANARI_MAX - lahin)/PLAANARI_ASKEL));
 }
 
 /* ===== AURINKO =====
@@ -852,13 +866,14 @@ const colorOf = (side, i) => (side==='left'?PORT_COLORS:STBD_COLORS)[i % 3];
 
 function store(k,v){ try{ localStorage.setItem(k, JSON.stringify(v)); }catch(e){} }
 function load(k,d){ try{ const s = localStorage.getItem(k); return s ? JSON.parse(s) : d; }catch(e){ return d; } }
-function saveAll(){ store('tp2_lures_v4',lures); store('tp2_rods',rods); store('tp2_takilat',takilat); store('tp2_cfg_v2',CFG); store('tp2_env',{bottomD:bottomD,targetD:targetD,speed:speed}); }
+function saveAll(){ store('tp2_lures_v4',lures); store('tp2_rods',rods); store('tp2_takilat',takilat); store('tp2_plaanari',plaanariSisin); store('tp2_cfg_v2',CFG); store('tp2_env',{bottomD:bottomD,targetD:targetD,speed:speed}); }
 
 function boot(){
   lures = load('tp2_lures_v4', null) || DEFAULT_LURES.slice();
   lures.forEach(l=>{ if(!l.buoy) l.buoy = (l.type==='spoon'?'sink':'float'); if(!l.dragMul) l.dragMul = 1; });
   rods  = load('tp2_rods', null) || {left:[], right:[]};
   takilat = load('tp2_takilat', null) || [oletusTakila(), oletusTakila()];
+  plaanariSisin = load('tp2_plaanari', null) || { left:8, right:8 };
   CFG   = Object.assign({}, DEFAULT_CFG, load('tp2_cfg_v2', {}));
   const env = load('tp2_env', {});
   bottomD = env.bottomD ?? 8; targetD = env.targetD ?? 6; speed = env.speed ?? 3.0;
@@ -991,6 +1006,203 @@ function lureIcon(x, y, ang, color, type){
 
    Mittakaava on 1:1 ja se sovitetaan levitykseen — 50 metrin plaanari
    ja 3 metrin sivuvapa eivät mahdu samaan kiinteään asteikkoon. */
+
+/* ============================================================
+   KALAN NÄKÖKULMA
+   ============================================================
+   Lisätty 5.9.2026. Sivu- ja ylänäkymä kertovat missä vieheet ovat.
+   Tämä kertoo miltä ne NÄYTTÄVÄT sieltä mistä otti tulee.
+
+   KAMERAN PAIKKA käyttäjän kuvauksen mukaan:
+     3 m syvyydessä
+     20 m lähimmän takilan takana
+     15° keskilinjasta sivussa
+     katsoo KOHTI VENETTÄ — kala on väistänyt ja katsoo tulijoita
+
+   Puoli on vaihdettavissa; oletus on auringon puoli, koska vieheet näkyvät
+   siltä puolelta vasten valoa.
+
+   KOORDINAATISTO: x = sivu (+ tyyrpuuri), y = pituus (+ keula), z = syvyys alas. */
+const KALA_SYVYYS = 3.0;
+const KALA_ETAISYYS = 20.0;
+const KALA_KULMA = 15.0;
+
+function kalanKamera(puoli){
+  const sij = takilaSijainnit(takilat.length);
+  const takaisin = sij.length ? Math.min(...sij.map(s=>s.y)) : 0;
+  const a = KALA_KULMA*Math.PI/180;
+  const m = (puoli === 'oikea') ? 1 : -1;
+  return {
+    x: m*KALA_ETAISYYS*Math.sin(a),
+    y: takaisin - KALA_ETAISYYS*Math.cos(a),
+    z: KALA_SYVYYS,
+    // Katsoo veneen perän suuntaan, hieman pinnan alle: sinne mistä vieheet tulevat.
+    kohdeX: 0, kohdeY: takaisin, kohdeZ: 1.5
+  };
+}
+
+/* Perspektiiviprojektio. Palauttaa null jos piste on kameran takana —
+   silloin sitä ei piirretä, koska sitä ei näy. */
+function kalaProjektio(kam, p, W, H){
+  // Katsesuunta
+  const fx = kam.kohdeX - kam.x, fy = kam.kohdeY - kam.y, fz = kam.kohdeZ - kam.z;
+  const fl = Math.hypot(fx, fy, fz);
+  const F = [fx/fl, fy/fl, fz/fl];
+  // Oikea käsi: ylös on -z (pinta ylöspäin)
+  const up = [0, 0, -1];
+  const R = [F[1]*up[2]-F[2]*up[1], F[2]*up[0]-F[0]*up[2], F[0]*up[1]-F[1]*up[0]];
+  const rl = Math.hypot(R[0],R[1],R[2]) || 1;
+  const Rn = [R[0]/rl, R[1]/rl, R[2]/rl];
+  const U = [Rn[1]*F[2]-Rn[2]*F[1], Rn[2]*F[0]-Rn[0]*F[2], Rn[0]*F[1]-Rn[1]*F[0]];
+
+  const d = [p.x - kam.x, p.y - kam.y, p.z - kam.z];
+  const syvyysK = d[0]*F[0] + d[1]*F[1] + d[2]*F[2];
+  if(syvyysK <= 0.3) return null;                    // kameran takana tai liian lähellä
+  const oikea = d[0]*Rn[0] + d[1]*Rn[1] + d[2]*Rn[2];
+  const ylos  = d[0]*U[0]  + d[1]*U[1]  + d[2]*U[2];
+
+  const polttovali = W*0.85;                          // n. 60° näkökenttä
+  return {
+    x: W/2 + polttovali*oikea/syvyysK,
+    y: H/2 - polttovali*ylos/syvyysK,
+    z: syvyysK,
+    koko: Math.max(2, Math.min(26, polttovali*0.35/syvyysK))
+  };
+}
+
+function drawFish(){
+  const W = 720, H = 520;
+  const kam = kalanKamera(kalaPuoli);
+
+  // Kaikki kohteet maailmankoordinaateissa
+  const K = [];
+  ['left','right'].forEach(side=>{
+    rods[side].forEach((rod,i)=>{
+      const s = solveRod(rod, speed);
+      const p = vavanSijainti(side, rod, i);
+      K.push({ x:p.x, y:-s.run, z:s.depth, vari:colorOf(side,i),
+               nimi:lureById(rod.lureId).name, tyyppi:lureById(rod.lureId).type,
+               kx:p.x, ky:p.y, kz:0 });
+    });
+  });
+  const sij = takilaSijainnit(takilat.length);
+  takilat.forEach((tak,ti)=>{
+    const tk = solveTakila(tak, speed);
+    const p = sij[ti] || {x:0,y:0};
+    const vari = TAKILA_VARIT[ti % TAKILA_VARIT.length];
+    K.push({ x:p.x, y:p.y-tk.run, z:tk.depth, vari:vari, nimi:'kuula', kuula:true,
+             kx:p.x, ky:p.y, kz:0 });
+    tak.uistimet.forEach((u,ui)=>{
+      if(!u.lureId) return;
+      const vp = takilaVapauttaja(tk, ui*(tak.vali||TAKILA_VALI_FT));
+      const pk = takilaUistimenPaikka(vp, lureById(u.lureId), u.vapFt||0, 0.35, speed);
+      K.push({ x:p.x, y:p.y-pk.run, z:pk.depth, vari:vari,
+               nimi:lureById(u.lureId).name, tyyppi:lureById(u.lureId).type,
+               kx:p.x, ky:p.y-vp.run, kz:vp.depth });
+    });
+  });
+
+  let g = '';
+  // VESI: pinta ylhäällä, syvyys tummenee alaspäin
+  const pinta = kalaProjektio(kam, {x:0, y:kam.y+30, z:0}, W, H);
+  const pintaY = pinta ? Math.max(0, Math.min(H, pinta.y)) : H*0.25;
+  g += `<rect x="0" y="0" width="${W}" height="${H}" fill="#04121b"/>`;
+  g += `<defs><linearGradient id="vesiK" x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0" stop-color="#12435c"/><stop offset="1" stop-color="#03090f"/></linearGradient></defs>`;
+  g += `<rect x="0" y="${pintaY.toFixed(0)}" width="${W}" height="${(H-pintaY).toFixed(0)}" fill="url(#vesiK)"/>`;
+  g += `<line x1="0" y1="${pintaY.toFixed(0)}" x2="${W}" y2="${pintaY.toFixed(0)}"
+          stroke="#7ed0f0" stroke-width="2" stroke-opacity=".5"/>`;
+
+  // AURINKO: kajastus pinnassa siitä suunnasta josta paistaa
+  const au = currentLocation ? aurinkoNyt(currentLocation.lat, currentLocation.lon) : null;
+  if(au){
+    const kurssi = (typeof viimeisinKurssi === 'number') ? viimeisinKurssi : 0;
+    const suht = ((au.suunta - kurssi)%360 + 360)%360;
+    // Aurinko projisoidaan kaukaiseksi pisteeksi pinnalla
+    const R2 = 120;
+    const ap = kalaProjektio(kam, {
+      x: kam.x + R2*Math.sin(suht*Math.PI/180),
+      y: kam.y + R2*Math.cos(suht*Math.PI/180),
+      z: -R2*Math.tan(au.korkeus*Math.PI/180)*0.15
+    }, W, H);
+    // Jos aurinko on näkökentän ulkopuolella, näytetään reunassa nuoli sen
+    // suuntaan. Muuten kajastus vain katoaisi eikä kertoisi mitään — ja
+    // aurinko on kalastuksessa merkitsevä silloinkin kun se on sivussa.
+    if(!ap || ap.x < -60 || ap.x > W+60){
+      const oikealla = (suht > 0 && suht < 180);
+      const rx = oikealla ? W-16 : 16;
+      g += `<circle cx="${rx}" cy="${(pintaY+16).toFixed(0)}" r="7" fill="#ffe08a" opacity=".55"/>`;
+      g += `<text x="${oikealla ? W-30 : 30}" y="${(pintaY+20).toFixed(0)}"
+              text-anchor="${oikealla ? 'end' : 'start'}" font-size="11" fill="#ffe08a" opacity=".8">
+              aurinko ${Math.round(au.korkeus)}° ${oikealla ? '→' : '←'}</text>`;
+    }
+    if(ap && ap.x > -60 && ap.x < W+60){
+      const leveys = Math.max(70, 300*(1 - au.korkeus/90));
+      g += `<defs><radialGradient id="aurKala"><stop offset="0" stop-color="#ffe08a" stop-opacity="0.42"/>
+              <stop offset="1" stop-color="#ffe08a" stop-opacity="0"/></radialGradient></defs>`;
+      g += `<ellipse cx="${ap.x.toFixed(0)}" cy="${pintaY.toFixed(0)}" rx="${leveys.toFixed(0)}" ry="${(leveys*0.5).toFixed(0)}"
+              fill="url(#aurKala)"/>`;
+      // ohut viiva kajastuksen keskellä
+      g += `<line x1="${ap.x.toFixed(0)}" y1="${(pintaY-6).toFixed(0)}" x2="${ap.x.toFixed(0)}" y2="${(pintaY + leveys*0.5).toFixed(0)}"
+              stroke="#ffe08a" stroke-width="1.2" stroke-opacity=".6"/>`;
+    }
+  }
+
+  // Kohteet takaa eteen, jotta lähimmät piirtyvät päälle
+  const proj = K.map(k=>({ k:k,
+      p:kalaProjektio(kam, {x:k.x, y:k.y, z:k.z}, W, H),
+      kp:kalaProjektio(kam, {x:k.kx, y:k.ky, z:k.kz}, W, H) }))
+    .filter(o=>o.p).sort((a,b)=>b.p.z - a.p.z);
+
+  proj.forEach(o=>{
+    const k = o.k, p = o.p;
+    if(o.kp){
+      g += `<line x1="${o.kp.x.toFixed(1)}" y1="${o.kp.y.toFixed(1)}" x2="${p.x.toFixed(1)}" y2="${p.y.toFixed(1)}"
+              stroke="${k.vari}" stroke-width="1" stroke-opacity=".45"/>`;
+    }
+    const r = p.koko;
+    if(k.kuula){
+      g += `<circle cx="${p.x.toFixed(1)}" cy="${p.y.toFixed(1)}" r="${(r*0.7).toFixed(1)}"
+              fill="#8f9aa1" stroke="#04121a" stroke-width="1"/>`;
+    } else if(k.tyyppi === 'spoon'){
+      g += `<ellipse cx="${p.x.toFixed(1)}" cy="${p.y.toFixed(1)}" rx="${(r*0.5).toFixed(1)}" ry="${r.toFixed(1)}"
+              fill="${k.vari}" stroke="#04121a" stroke-width="1"/>`;
+    } else {
+      g += `<ellipse cx="${p.x.toFixed(1)}" cy="${p.y.toFixed(1)}" rx="${r.toFixed(1)}" ry="${(r*0.42).toFixed(1)}"
+              fill="${k.vari}" stroke="#04121a" stroke-width="1"/>`;
+    }
+    if(r > 4){
+      g += `<text x="${p.x.toFixed(1)}" y="${(p.y - r - 5).toFixed(1)}" text-anchor="middle"
+              font-size="12" font-weight="700" fill="${k.vari}">${fmt(k.z)}</text>`;
+    }
+  });
+
+  g += `<text x="12" y="${(H-12)}" font-size="12" fill="#5d7482">Kala ${KALA_SYVYYS} m, ${KALA_ETAISYYS} m takana, ${KALA_KULMA}° ${kalaPuoli==='oikea'?'tyyrpuurin':'paapuurin'} puolella</text>`;
+
+  document.getElementById('profile').innerHTML =
+    `<svg viewBox="0 0 ${W} ${H}" xmlns="http://www.w3.org/2000/svg">${g}</svg>`;
+
+  const deepest = Math.max(0, ...K.map(k=>k.z));
+  document.getElementById('roDeep').textContent = fmt(deepest);
+  document.getElementById('roSpeed').textContent = fmt(speed);
+  document.getElementById('roBottom').textContent = bottomD>0 ? fmt(bottomD) : '-';
+  return K;
+}
+
+/* Kalan puoli. Oletus auringon puoli — vieheet näkyvät sieltä vasten valoa. */
+let kalaPuoli = 'oikea';
+function paivitaKalanPuoli(){
+  const au = currentLocation ? aurinkoNyt(currentLocation.lat, currentLocation.lon) : null;
+  if(!au) return;
+  const kurssi = (typeof viimeisinKurssi === 'number') ? viimeisinKurssi : 0;
+  const suht = ((au.suunta - kurssi)%360 + 360)%360;
+  kalaPuoli = (suht < 180) ? 'oikea' : 'vasen';
+}
+function vaihdaKalanPuoli(){
+  kalaPuoli = (kalaPuoli === 'oikea') ? 'vasen' : 'oikea';
+  renderAll();
+}
+
 function drawTop(){
   const K = [];    // kaikki kohteet: {x, y, syvyys, vari, nimi, tapa}
 
@@ -1079,8 +1291,8 @@ function drawTop(){
     const merkki = (side==='left') ? -1 : 1;
     const boardRods = rods[side].filter(r=>r.board);
     if(boardRods.length === 0) return;
-    const uloin = Math.max(...boardRods.map(r=>r.boardOut||8));
-    const bx = X(merkki*(VENE_LAITA + uloin + 3)), by = Y(0);
+    const uloin = plaanariKelkka(boardRods.length, plaanariSisin[side]);
+    const bx = X(merkki*(VENE_LAITA + uloin)), by = Y(0);
     g += `<line x1="${X(merkki*VENE_LAITA).toFixed(1)}" y1="${by}" x2="${bx.toFixed(1)}" y2="${by}"
             stroke="#c9d4da" stroke-width="2" stroke-opacity=".8"/>`;
     // kelkka
@@ -1136,6 +1348,7 @@ function drawTop(){
 let nakyma = 'sivu';
 function vaihdaNakyma(n){
   nakyma = n;
+  if(n === 'kala') paivitaKalanPuoli();   // oletus auringon puolelle
   document.querySelectorAll('#nakymaNapit .pill').forEach(p=>
     p.classList.toggle('on', p.dataset.n === n));
   renderAll();
@@ -1329,6 +1542,34 @@ function renderRods(items){
     }).join('');
   });
 }
+function renderPlaanarit(){
+  const box = document.getElementById('plaanariTila');
+  if(!box) return;
+  const rivit = ['left','right'].map(side=>{
+    const b = rods[side].filter(r=>r.board);
+    const nimi = (side==='left') ? 'Paapuuri' : 'Tyyrpuuri';
+    if(b.length === 0)
+      return `<div class="row"><div class="lb" style="color:var(--ink-faint)">${nimi}</div>
+        <div class="sub" style="margin:0">ei plaanarivapoja</div></div>`;
+    const et = plaanariEtaisyydet(b.length, plaanariSisin[side]);
+    const maxN = plaanariMaksimiUistimet(plaanariSisin[side]);
+    return `<div class="row" style="display:block">
+      <div style="display:flex;justify-content:space-between;align-items:center;gap:8px">
+        <div class="lb">${nimi} — kelkka ${fmt(et[0])} m laidasta</div>
+        <div class="num"><span style="font-size:11px;color:var(--ink-faint)">lähin</span>
+          <input type="number" value="${plaanariSisin[side]}" step="1" min="6" max="12" style="width:60px"
+                 oninput="setPlaanariSisin('${side}',this.value)"><span>m</span></div>
+      </div>
+      <div style="font-size:11px;color:var(--ink-faint);margin-top:4px">
+        ${b.map((r,i)=>`${lureById(r.lureId).name} ${fmt(et[i])} m`).join(' · ')}
+      </div>
+      ${b.length > maxN ? `<div style="font-size:10.5px;color:var(--warn);margin-top:3px">
+        ⚠ ${b.length} vapaa ei mahdu 50 m sisään tällä lähimmällä — mahtuu ${maxN}</div>` : ''}
+    </div>`;
+  }).join('');
+  box.innerHTML = rivit;
+}
+
 function renderTakilat(){
   const box = document.getElementById('takilaLista');
   if(!box) return;
@@ -1434,8 +1675,12 @@ function renderLures(){
       <button class="btn sm ghost" style="color:var(--port)" onclick="delLure(${i})">Poista</button></div></div>`).join('');
 }
 function renderAll(){
-  const items = (nakyma === 'ylhaalta') ? (drawTop(), collect()) : drawProfile();
-  renderRods(items); renderTakilat(); renderLures(); renderCalcLures(); renderCalibLures(); runCalc(); saveAll(); }
+  const pn = document.getElementById('kalaPuoliNappi');
+  if(pn) pn.style.display = (nakyma === 'kala') ? '' : 'none';
+  const items = (nakyma === 'ylhaalta') ? (drawTop(), collect())
+              : (nakyma === 'kala')     ? (drawFish(), collect())
+              : drawProfile();
+  renderRods(items); renderPlaanarit(); renderTakilat(); renderLures(); renderCalcLures(); renderCalibLures(); runCalc(); saveAll(); }
 
 /* ============================================================
    5. VUOROVAIKUTUS
@@ -1464,9 +1709,22 @@ let sheetSide='left', sheetLure=null, sheetLureIdx=null, sheetType='wobbler', sh
 function vavanSijainti(side, rod, i){
   const merkki = (side === 'left') ? -1 : 1;
   if(rod.board){
-    return { x: merkki*(VENE_LAITA + (rod.boardOut || 8)), y: 0, tapa:'plaanari' };
+    // Sijainti määräytyy JÄRJESTYKSESTÄ: ensimmäinen plaanarivapa on uloin.
+    const boardit = rods[side].filter(r=>r.board);
+    const jarj = boardit.indexOf(rod);
+    const et = plaanariEtaisyydet(boardit.length, plaanariSisin[side]);
+    const d = (jarj >= 0 && et[jarj] !== undefined) ? et[jarj] : 8;
+    return { x: merkki*(VENE_LAITA + d), y: 0, tapa:'plaanari', ulos:d };
   }
   return { x: merkki*(VENE_LAITA + SIVUVAPA_ULOS), y: 0, tapa: rod.diver ? 'diver' : 'vapa' };
+}
+
+/* Veneen lähimmän plaanariuistimen etäisyys laidasta, puolittain säädettävä. */
+let plaanariSisin = { left: 8, right: 8 };
+function setPlaanariSisin(side, v){
+  const n = parseFloat(v);
+  if(!isNaN(n)) plaanariSisin[side] = Math.max(6, Math.min(12, n));
+  renderAll();
 }
 
 /* Muokattavan vavan indeksi, tai null jos lisätään uusi. */
@@ -1488,8 +1746,9 @@ function openRodSheet(side, idx){
   document.getElementById('rodWPills').innerHTML = [0,20,40,60,80,120].map(w=>`<button class="pill" onclick="setNum('rodW',${w})">${w} g</button>`).join('');
   sheetDiver = false; sheetDSetting = 0; sheetDLine = 'mono';
   document.getElementById('rodDiverPills').innerHTML =
-    `<button class="pill" data-d="off" onclick="setDiver(false)">Vapaa uinti</button>` +
-    [0,1,2,3].map(s=>`<button class="pill" data-d="${s}" onclick="setDiver(true,${s})">Dipsy ${s}</button>`).join('');
+    `<button class="pill" data-d="off" onclick="setDiver(false)">Veneen takaa</button>`
+  + `<button class="pill" data-d="board" onclick="setPlaanari()">Plaanari</button>`
+  + [0,1,2,3].map(s=>`<button class="pill" data-d="${s}" onclick="setDiver(true,${s})">Dipsy ${s}</button>`).join('');
   document.getElementById('rodDiverLine').innerHTML =
     ['mono','kuitu'].map(t=>`<button class="pill" data-l="${t}" onclick="setDiverLine('${t}')">${t==='kuitu'?'Kuitu':'Mono'}</button>`).join('');
   // KORJATTU 5.9.2026: pelkkä sheetDiver=false ei riittänyt. Näkyvyystilat
@@ -1498,7 +1757,9 @@ function openRodSheet(side, idx){
   // Kutsutaan setDiver(false), joka nollaa kaikki kolme kerralla.
   // Diverin tila vanhasta vavasta, muuten oletus. setDiver hoitaa myös
   // näkyvyystilat, joten sitä on kutsuttava kummassakin tapauksessa.
-  if(vanha && vanha.diver){
+  if(vanha && vanha.board){
+    setPlaanari();
+  } else if(vanha && vanha.diver){
     sheetDSetting = vanha.dSetting || 0;
     sheetDLine = vanha.dLineType || 'mono';
     setDiver(true, sheetDSetting);
@@ -1511,8 +1772,28 @@ function openRodSheet(side, idx){
 }
 function pickLure(id){ sheetLure = id; syncRodSheet(); }
 let sheetDiver = false, sheetDSetting = 0, sheetDLine = 'mono';
+let sheetBoard = false;
+
+/* Plaanari on kolmas kiinnitystapa, ei Dipsyn lisä: uistin roikkuu
+   selkäsiimassa eikä veneen takana. Siksi ne sulkevat toisensa pois. */
+function setPlaanari(){
+  sheetBoard = true; sheetDiver = false;
+  document.getElementById('rodWeightCard').style.display = 'none';
+  document.getElementById('rodDiverLine').style.display = 'none';
+  document.getElementById('rodDiverHint').style.display = 'block';
+  document.getElementById('rodDiverHint').textContent =
+    'Uistin kiinnittyy selkäsiimaan. Ensimmäinen plaanarivapa on uloin ja menee kelkkaan; '
+    + 'seuraavat tulevat 20 jalan välein sisäänpäin. Kelkka siirtyy ulommas jokaisesta lisätystä.';
+  syncRodSheet();
+}
+
 function setDiver(on, s){
-  sheetDiver = on; if(on && s!==undefined) sheetDSetting = s;
+  sheetDiver = on; sheetBoard = false;
+  if(on && s!==undefined) sheetDSetting = s;
+  const hint = document.getElementById('rodDiverHint');
+  if(hint) hint.textContent = 'Syvyys = siimaa ulkona jaettuna suhdeluvulla. '
+    + 'Sama malli kuin uistelututkan laskurissa. Luhr Jensenin taulukkoa ei käytetä, '
+    + 'koska se pätee O-rengas paikallaan.';
   // Diveri ja lyijypaino ovat vaihtoehtoisia: diveri tuottaa oman sukelluksensa.
   document.getElementById('rodWeightCard').style.display = on ? 'none' : '';
   document.getElementById('rodDiverLine').style.display = on ? 'flex' : 'none';
@@ -1530,17 +1811,28 @@ function syncRodSheet(){
   document.querySelectorAll('#rodFtPills .pill').forEach(p=>p.classList.toggle('on', parseFloat(p.textContent)===ft));
   document.querySelectorAll('#rodWPills .pill').forEach(p=>p.classList.toggle('on', parseFloat(p.textContent)===w));
   document.querySelectorAll('#rodDiverPills .pill').forEach(p=>{
-    p.classList.toggle('on', sheetDiver ? p.dataset.d===String(sheetDSetting) : p.dataset.d==='off');
+    const valittu = sheetBoard ? (p.dataset.d === 'board')
+                  : sheetDiver ? (p.dataset.d === String(sheetDSetting))
+                  : (p.dataset.d === 'off');
+    p.classList.toggle('on', valittu);
   });
   document.querySelectorAll('#rodDiverLine .pill').forEach(p=>p.classList.toggle('on', p.dataset.l===sheetDLine));
   const s = sheetDiver
     ? solveDiver({ft:ft, dia:d, dSetting:sheetDSetting, dLineType:sheetDLine}, speed)
-    : solve(lureById(sheetLure), ft, w, d, speed);
+    : solve(lureById(sheetLure), ft, w, sheetBoard ? d : d, speed);
   document.getElementById('rodPreview').textContent = fmt(s.depth);
   const eTapa = document.getElementById('rodPreviewTapa');
-  if(eTapa) eTapa.textContent = sheetDiver
-    ? `Dipsy ${sheetDSetting}, ${sheetDLine==='kuitu'?'kuitu':'mono'} · ${Math.round(s.run)} m perässä`
-    : `vapaa uinti · ${Math.round(s.run)} m perässä`;
+  if(eTapa){
+    if(sheetBoard){
+      const n = rods[sheetSide].filter(r=>r.board).length + (sheetRodIdx===null?1:0);
+      const et = plaanariEtaisyydet(Math.max(1,n), plaanariSisin[sheetSide]);
+      eTapa.textContent = `plaanari · uloin ${fmt(et[0])} m laidasta · ${Math.round(s.run)} m perässä`;
+    } else if(sheetDiver){
+      eTapa.textContent = `Dipsy ${sheetDSetting}, ${sheetDLine==='kuitu'?'kuitu':'mono'} · ${Math.round(s.run)} m perässä`;
+    } else {
+      eTapa.textContent = `veneen takaa · ${Math.round(s.run)} m perässä`;
+    }
+  }
 }
 function commitRod(){
   const uusi = {
@@ -1550,7 +1842,8 @@ function commitRod(){
     dia:parseFloat(document.getElementById('rodDia').value)||0.30,
     diver: sheetDiver,
     dSetting: sheetDSetting,
-    dLineType: sheetDLine
+    dLineType: sheetDLine,
+    board: sheetBoard
   };
   // Muokkaus säilyttää paikan listassa, jotta väri ja järjestys eivät hyppää.
   if(sheetRodIdx !== null && rods[sheetSide][sheetRodIdx]) rods[sheetSide][sheetRodIdx] = uusi;
