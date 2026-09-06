@@ -122,7 +122,7 @@ nav button.on{color:var(--sky)}
 <body>
 
 <header>
-  <div class="brand">Trolling<em>Pro</em> 2 <span style="font-size:10px;color:var(--ink-faint);font-weight:400">v3.8</span></div>
+  <div class="brand">Trolling<em>Pro</em> 2 <span style="font-size:10px;color:var(--ink-faint);font-weight:400">v3.9</span></div>
   <div id="gpsChip" class="chip">GPS pois</div>
 </header>
 
@@ -923,6 +923,7 @@ function oletusTakila(){
            vali: TAKILA_VALI_FT, uistimet: [{ lureId: null, vapFt: 20 }] };
 }
 let speed = 3.0, bottomD = 8, targetD = 6, gpsId = null, wake = null, lastFix = null;
+let edellinenPaikka = null;   // kurssin laskentaa varten
 
 const TAKILA_VARIT = ['#c9d4da','#9fb8c4','#7fa0ae','#6b8d9c','#5a7a88','#4a6875'];
 const PORT_COLORS = ['#ff5f57','#ff8f4d','#ff4d8f'];
@@ -2257,6 +2258,7 @@ function stopGPS(){
   if(gpsId!==null) navigator.geolocation.clearWatch(gpsId);
   gpsId = null; lastFix = null;
   gpsPuskuri = []; gpsViimePiirto = 0;
+  kurssiPuskuri = []; edellinenPaikka = null;
   if(wake){ try{wake.release();}catch(e){} wake = null; }
   const btn = document.getElementById('gpsBtn');
   btn.classList.remove('on'); btn.textContent = 'Käynnistä GPS';
@@ -2276,6 +2278,43 @@ function stopGPS(){
 const GPS_IKKUNA_MS = 10000;
 let gpsPuskuri = [];
 let gpsViimePiirto = 0;
+
+/* KURSSI — lisätty 5.9.2026.
+   Koodissa viitattiin `viimeisinKurssi`-muuttujaan, mutta sitä ei koskaan
+   laskettu. Siksi kurssiksi tuli aina 0 (pohjoinen), ja aurinko jäi ruudulla
+   samaan kohtaan vaikka kääntyi minne päin tahansa.
+
+   Kurssi otetaan ensisijaisesti GPS:n omasta heading-kentästä. Jos laite ei
+   anna sitä, se lasketaan peräkkäisten paikkojen välisestä suunnasta — mutta
+   vain jos on liikuttu vähintään 3 metriä, koska paikallaan GPS:n kohina
+   pyörittäisi suuntaa satunnaisesti.
+
+   Suunta tasoitetaan samalla 10 sekunnin ikkunalla kuin nopeus, ja
+   keskiarvo lasketaan vektoreina — muuten 350° ja 10° antaisi 180°. */
+let viimeisinKurssi = 0;
+let kurssiPuskuri = [];
+
+function kurssiKeskiarvo(){
+  const nyt = Date.now();
+  kurssiPuskuri = kurssiPuskuri.filter(h => nyt - h.t <= GPS_IKKUNA_MS);
+  if(kurssiPuskuri.length === 0) return null;
+  let sx = 0, sy = 0;
+  kurssiPuskuri.forEach(h=>{
+    const r = h.k*Math.PI/180;
+    sx += Math.sin(r); sy += Math.cos(r);
+  });
+  if(Math.abs(sx) < 1e-9 && Math.abs(sy) < 1e-9) return null;
+  return (Math.atan2(sx, sy)*180/Math.PI + 360) % 360;
+}
+
+/* Suunta pisteestä toiseen, asteina pohjoisesta myötäpäivään. */
+function suuntaValilla(la1, lo1, la2, lo2){
+  const R = Math.PI/180;
+  const dLo = (lo2-lo1)*R;
+  const y = Math.sin(dLo)*Math.cos(la2*R);
+  const x = Math.cos(la1*R)*Math.sin(la2*R) - Math.sin(la1*R)*Math.cos(la2*R)*Math.cos(dLo);
+  return (Math.atan2(y, x)*180/Math.PI + 360) % 360;
+}
 
 function gpsKeskiarvo(){
   const nyt = Date.now();
@@ -2302,6 +2341,33 @@ function onFix(pos){
   // Sijainti aurinkolaskentaa varten. Tarkkuus riittää: auringon korkeus
   // muuttuu Suomen sisällä vain muutaman asteen.
   sijainti = { lat: pos.coords.latitude, lon: pos.coords.longitude };
+
+  // Kurssi: laitteen oma jos on, muuten peräkkäisistä paikoista.
+  let kurssi = pos.coords.heading;
+  if(kurssi === null || isNaN(kurssi)){
+    if(edellinenPaikka){
+      const R = 6371000, toR = Math.PI/180;
+      const dLa = (pos.coords.latitude - edellinenPaikka.la)*toR;
+      const dLo = (pos.coords.longitude - edellinenPaikka.lo)*toR;
+      const a3 = Math.sin(dLa/2)**2 + Math.cos(edellinenPaikka.la*toR)
+               * Math.cos(pos.coords.latitude*toR)*Math.sin(dLo/2)**2;
+      const matka = 2*R*Math.asin(Math.min(1, Math.sqrt(a3)));
+      // Alle 3 m siirtymä on GPS:n kohinaa, ei kääntymistä.
+      if(matka >= 3){
+        kurssi = suuntaValilla(edellinenPaikka.la, edellinenPaikka.lo,
+                               pos.coords.latitude, pos.coords.longitude);
+        edellinenPaikka = { la: pos.coords.latitude, lo: pos.coords.longitude };
+      } else kurssi = null;
+    } else {
+      edellinenPaikka = { la: pos.coords.latitude, lo: pos.coords.longitude };
+      kurssi = null;
+    }
+  }
+  if(kurssi !== null && !isNaN(kurssi)){
+    kurssiPuskuri.push({ t: Date.now(), k: kurssi });
+    const kk = kurssiKeskiarvo();
+    if(kk !== null) viimeisinKurssi = kk;
+  }
   if(v === null || isNaN(v)) return;
   const kmh = Math.max(0, v*3.6);
   gpsPuskuri.push({ t: Date.now(), v: kmh });
@@ -2311,7 +2377,7 @@ function onFix(pos){
 
   const chip = document.getElementById('gpsChip');
   chip.classList.add('live');
-  chip.textContent = 'GPS ' + fmt(speed) + ' km/h';
+  chip.textContent = 'GPS ' + fmt(speed) + ' km/h · ' + Math.round(viimeisinKurssi) + '°';
 
   // Kuva enintään 10 s välein. Nopeuslukema päivittyy silti joka kerta,
   // koska se on yksi teksti eikä maksa mitään.
