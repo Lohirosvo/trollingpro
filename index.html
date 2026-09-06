@@ -122,7 +122,7 @@ nav button.on{color:var(--sky)}
 <body>
 
 <header>
-  <div class="brand">Trolling<em>Pro</em> 2 <span style="font-size:10px;color:var(--ink-faint);font-weight:400">v2.7</span></div>
+  <div class="brand">Trolling<em>Pro</em> 2 <span style="font-size:10px;color:var(--ink-faint);font-weight:400">v2.8</span></div>
   <div id="gpsChip" class="chip">GPS pois</div>
 </header>
 
@@ -169,12 +169,12 @@ nav button.on{color:var(--sky)}
       <div class="side">
         <h2><i class="dot" style="background:var(--port)"></i>Paapuuri</h2>
         <div id="rods-left"></div>
-        <button class="btn sm add" onclick="openRodSheet('left')">Lisää vapa</button>
+        <button class="btn sm add" onclick="openRodSheet('left', null)">Lisää vapa</button>
       </div>
       <div class="side">
         <h2><i class="dot" style="background:var(--stbd)"></i>Tyyrpuuri</h2>
         <div id="rods-right"></div>
-        <button class="btn sm add" onclick="openRodSheet('right')">Lisää vapa</button>
+        <button class="btn sm add" onclick="openRodSheet('right', null)">Lisää vapa</button>
       </div>
     </div>
   </section>
@@ -291,7 +291,7 @@ nav button.on{color:var(--sky)}
       </div>
       <div class="card"><div class="row res"><div><div class="lb">Arvioitu syvyys</div><div class="sub" id="rodPreviewTapa"></div></div><div class="num"><b id="rodPreview">0,0</b><span style="color:var(--stbd)">m</span></div></div></div>
     </div>
-    <div class="sheet-foot"><button class="btn wide go" onclick="commitRod()">Laske vetoon</button></div>
+    <div class="sheet-foot"><button class="btn wide go" id="rodSheetNappi" onclick="commitRod()">Laske vetoon</button></div>
   </div>
 </div>
 
@@ -1037,8 +1037,9 @@ function renderRods(items){
     if(!mine.length){ box.innerHTML = '<div class="empty">Ei vapoja vedossa</div>'; return; }
     box.innerHTML = mine.map(it=>{
       const deep = bottomD>0 && it.s.depth > bottomD-0.3;
-      return `<div class="rod ${deep?'deep':''}" style="border-left-color:${it.color}">
-        <button class="x" onclick="delRod('${side}',${it.i})" aria-label="Poista">✕</button>
+      return `<div class="rod ${deep?'deep':''}" style="border-left-color:${it.color};cursor:pointer"
+                   onclick="openRodSheet('${side}',${it.i})" title="Muokkaa">
+        <button class="x" onclick="event.stopPropagation();delRod('${side}',${it.i})" aria-label="Poista">✕</button>
         <div class="nm">${it.lure.name}</div>
         <div class="pm">${it.rod.ft} ft · ${it.rod.diver
             ? 'Dipsy '+it.rod.dSetting+' · '+(it.rod.dLineType==='kuitu'?'kuitu':'mono')
@@ -1174,12 +1175,20 @@ function resetAll(){ if(confirm('Palautetaanko kaikki oletukset?')){ try{localSt
 function closeSheets(){ document.querySelectorAll('.sheet').forEach(s=>s.classList.remove('on')); }
 
 let sheetSide='left', sheetLure=null, sheetLureIdx=null, sheetType='wobbler', sheetBuoy='float';
-function openRodSheet(side){
-  sheetSide = side; sheetLure = lures[0] ? lures[0].id : null;
-  document.getElementById('rodSheetTitle').textContent = side==='left' ? 'Paapuurin vapa' : 'Tyyrpuurin vapa';
-  document.getElementById('rodFt').value = CFG.defFt;
-  document.getElementById('rodW').value = 0;
-  document.getElementById('rodDia').value = CFG.defDia;
+/* Muokattavan vavan indeksi, tai null jos lisätään uusi. */
+let sheetRodIdx = null;
+
+function openRodSheet(side, idx){
+  sheetSide = side;
+  sheetRodIdx = (idx === undefined || idx === null) ? null : idx;
+  const vanha = (sheetRodIdx !== null) ? rods[side][sheetRodIdx] : null;
+
+  sheetLure = vanha ? vanha.lureId : (lures[0] ? lures[0].id : null);
+  document.getElementById('rodSheetTitle').textContent =
+    (vanha ? 'Muokkaa: ' : '') + (side==='left' ? 'Paapuurin vapa' : 'Tyyrpuurin vapa');
+  document.getElementById('rodFt').value  = vanha ? vanha.ft  : CFG.defFt;
+  document.getElementById('rodW').value   = vanha ? vanha.w   : 0;
+  document.getElementById('rodDia').value = vanha ? vanha.dia : CFG.defDia;
   document.getElementById('rodLures').innerHTML = lures.map(l=>`<button class="pill" data-id="${l.id}" onclick="pickLure('${l.id}')">${l.name}</button>`).join('');
   document.getElementById('rodFtPills').innerHTML = [30,50,75,100,130,160].map(f=>`<button class="pill" onclick="setNum('rodFt',${f})">${f} ft</button>`).join('');
   document.getElementById('rodWPills').innerHTML = [0,20,40,60,80,120].map(w=>`<button class="pill" onclick="setNum('rodW',${w})">${w} g</button>`).join('');
@@ -1193,7 +1202,16 @@ function openRodSheet(side){
   // (painokortti, siimatyyppi, ohje) jäivät edellisen vavan asetuksiin, joten
   // diverin jälkeen lisätyltä tavalliselta vavalta puuttui lyijypainon kortti.
   // Kutsutaan setDiver(false), joka nollaa kaikki kolme kerralla.
-  setDiver(false);
+  // Diverin tila vanhasta vavasta, muuten oletus. setDiver hoitaa myös
+  // näkyvyystilat, joten sitä on kutsuttava kummassakin tapauksessa.
+  if(vanha && vanha.diver){
+    sheetDSetting = vanha.dSetting || 0;
+    sheetDLine = vanha.dLineType || 'mono';
+    setDiver(true, sheetDSetting);
+  } else {
+    setDiver(false);
+  }
+  document.getElementById('rodSheetNappi').textContent = vanha ? 'Tallenna muutokset' : 'Laske vetoon';
   syncRodSheet();
   document.getElementById('rodSheet').classList.add('on');
 }
@@ -1231,7 +1249,7 @@ function syncRodSheet(){
     : `vapaa uinti · ${Math.round(s.run)} m perässä`;
 }
 function commitRod(){
-  rods[sheetSide].push({
+  const uusi = {
     lureId: sheetLure,
     ft: parseFloat(document.getElementById('rodFt').value)||0,
     w:  sheetDiver ? 0 : (parseFloat(document.getElementById('rodW').value)||0),
@@ -1239,7 +1257,11 @@ function commitRod(){
     diver: sheetDiver,
     dSetting: sheetDSetting,
     dLineType: sheetDLine
-  });
+  };
+  // Muokkaus säilyttää paikan listassa, jotta väri ja järjestys eivät hyppää.
+  if(sheetRodIdx !== null && rods[sheetSide][sheetRodIdx]) rods[sheetSide][sheetRodIdx] = uusi;
+  else rods[sheetSide].push(uusi);
+  sheetRodIdx = null;
   closeSheets(); renderAll();
 }
 
