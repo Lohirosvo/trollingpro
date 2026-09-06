@@ -122,7 +122,7 @@ nav button.on{color:var(--sky)}
 <body>
 
 <header>
-  <div class="brand">Trolling<em>Pro</em> 2 <span style="font-size:10px;color:var(--ink-faint);font-weight:400">v3.4</span></div>
+  <div class="brand">Trolling<em>Pro</em> 2 <span style="font-size:10px;color:var(--ink-faint);font-weight:400">v3.5</span></div>
   <div id="gpsChip" class="chip">GPS pois</div>
 </header>
 
@@ -1040,9 +1040,40 @@ const KALA_SYVYYS = 3.0;
 const KALA_ETAISYYS = 20.0;
 const KALA_KULMA = 15.0;
 
-function kalanKamera(puoli){
+/* KAMERAN PAIKKA — korjattu 5.9.2026.
+   Ensin kamera asetettiin 20 m lähimmästä takilasta taaksepäin. Se oli
+   kirjaimellisesti kuvauksen mukaan, mutta johti siihen ettei mitään näkynyt:
+   takilakuula on vain pari metriä veneen takana, kun taas plaanariviehe sadan
+   jalan siimalla on yli 30 metriä takana. Kala oli siis vieheiden EDESSÄ.
+
+   Kuvauksen tarkoitus oli "me ajetaan sen luokse ja yli" — kala näkee kaluston
+   tulevan. Siksi kamera asetetaan 20 metriä TAAEMMAKSI KUIN TAAIMMAINEN viehe.
+   Silloin kaikki on edessä ja tulossa, kuten pitääkin. */
+function kalanTaaimmainen(){
+  let taka = 0;
+  ['left','right'].forEach(side=>{
+    rods[side].forEach((rod,i)=>{
+      const p = vavanSijainti(side, rod, i);
+      taka = Math.min(taka, p.y - solveRod(rod, speed).run);
+    });
+  });
   const sij = takilaSijainnit(takilat.length);
-  const takaisin = sij.length ? Math.min(...sij.map(s=>s.y)) : 0;
+  takilat.forEach((tak,ti)=>{
+    const p = sij[ti] || {x:0,y:0};
+    const tk = solveTakila(tak, speed);
+    taka = Math.min(taka, p.y - tk.run);
+    tak.uistimet.forEach((u,ui)=>{
+      if(!u.lureId) return;
+      const vp = takilaVapauttaja(tk, ui*(tak.vali||TAKILA_VALI_FT));
+      const pk = takilaUistimenPaikka(vp, lureById(u.lureId), u.vapFt||0, 0.35, speed);
+      taka = Math.min(taka, p.y - pk.run);
+    });
+  });
+  return taka;
+}
+
+function kalanKamera(puoli){
+  const takaisin = kalanTaaimmainen();
   const a = KALA_KULMA*Math.PI/180;
   const m = (puoli === 'oikea') ? 1 : -1;
   return {
@@ -1087,31 +1118,42 @@ function drawFish(){
   const W = 720, H = 520;
   const kam = kalanKamera(kalaPuoli);
 
+  // Kaarros vaikuttaa myös tähän: hitaampi viehe nousee, nopeampi painuu.
+  const kr = kaarrosSuunta ? kaarrosJyrkinSade(kaarrosSuunta, speed) : null;
+  const kArvot = (kr && kr.sade > 0) ? kaarrosVaikutus(kaarrosSuunta, speed, kr.sade) : null;
+  const kNopeus = (x) => {
+    if(!kArvot) return speed;
+    const o = kArvot.find(a2 => Math.abs(a2.x - x) < 0.01);
+    return o ? Math.max(0.1, o.nopeus) : speed;
+  };
+
   // Kaikki kohteet maailmankoordinaateissa
   const K = [];
   ['left','right'].forEach(side=>{
     rods[side].forEach((rod,i)=>{
-      const s = solveRod(rod, speed);
       const p = vavanSijainti(side, rod, i);
-      K.push({ x:p.x, y:-s.run, z:s.depth, vari:colorOf(side,i),
+      const v2 = kNopeus(p.x);
+      const s = solveRod(rod, v2);
+      K.push({ x:p.x, y:p.y-s.run, z:s.depth, vari:colorOf(side,i),
                nimi:lureById(rod.lureId).name, tyyppi:lureById(rod.lureId).type,
-               kx:p.x, ky:p.y, kz:0 });
+               kx:p.x, ky:p.y, kz:0, nopeus:v2 });
     });
   });
   const sij = takilaSijainnit(takilat.length);
   takilat.forEach((tak,ti)=>{
-    const tk = solveTakila(tak, speed);
     const p = sij[ti] || {x:0,y:0};
+    const v2 = kNopeus(p.x);
+    const tk = solveTakila(tak, v2);
     const vari = TAKILA_VARIT[ti % TAKILA_VARIT.length];
     K.push({ x:p.x, y:p.y-tk.run, z:tk.depth, vari:vari, nimi:'kuula', kuula:true,
-             kx:p.x, ky:p.y, kz:0 });
+             kx:p.x, ky:p.y, kz:0, nopeus:v2 });
     tak.uistimet.forEach((u,ui)=>{
       if(!u.lureId) return;
       const vp = takilaVapauttaja(tk, ui*(tak.vali||TAKILA_VALI_FT));
-      const pk = takilaUistimenPaikka(vp, lureById(u.lureId), u.vapFt||0, 0.35, speed);
+      const pk = takilaUistimenPaikka(vp, lureById(u.lureId), u.vapFt||0, 0.35, v2);
       K.push({ x:p.x, y:p.y-pk.run, z:pk.depth, vari:vari,
                nimi:lureById(u.lureId).name, tyyppi:lureById(u.lureId).type,
-               kx:p.x, ky:p.y-vp.run, kz:vp.depth });
+               kx:p.x, ky:p.y-vp.run, kz:vp.depth, nopeus:v2 });
     });
   });
 
@@ -1184,13 +1226,21 @@ function drawFish(){
       g += `<ellipse cx="${p.x.toFixed(1)}" cy="${p.y.toFixed(1)}" rx="${r.toFixed(1)}" ry="${(r*0.42).toFixed(1)}"
               fill="${k.vari}" stroke="#04121a" stroke-width="1"/>`;
     }
-    if(r > 4){
+    // Raja 2,5 px: kaukainenkin viehe saa lukemansa. Kaarroksessa nopeus on
+    // se mitä halutaan nähdä, ja juuri kauimmaiset ovat hitaimpia.
+    if(r > 2.5){
+      const hidas = (k.nopeus !== undefined && k.nopeus < 1.5);
       g += `<text x="${p.x.toFixed(1)}" y="${(p.y - r - 5).toFixed(1)}" text-anchor="middle"
-              font-size="12" font-weight="700" fill="${k.vari}">${fmt(k.z)}</text>`;
+              font-size="12" font-weight="700" fill="${hidas?'var(--warn)':k.vari}">${fmt(k.z)}</text>`;
+      if(kArvot && k.nopeus !== undefined){
+        g += `<text x="${p.x.toFixed(1)}" y="${(p.y - r - 17).toFixed(1)}" text-anchor="middle"
+                font-size="10" fill="${hidas?'var(--warn)':'#7e93a8'}">${fmt(k.nopeus)} km/h</text>`;
+      }
     }
   });
 
-  g += `<text x="12" y="${(H-12)}" font-size="12" fill="#5d7482">Kala ${KALA_SYVYYS} m, ${KALA_ETAISYYS} m takana, ${KALA_KULMA}° ${kalaPuoli==='oikea'?'tyyrpuurin':'paapuurin'} puolella</text>`;
+  g += `<text x="12" y="${(H-12)}" font-size="12" fill="#5d7482">Kala ${KALA_SYVYYS} m, ${KALA_ETAISYYS} m takana, ${KALA_KULMA}° ${kalaPuoli==='oikea'?'tyyrpuurin':'paapuurin'} puolella${
+    kr && kr.sade>0 ? ' · kaarros '+(kaarrosSuunta==='vasen'?'vasempaan':'oikeaan')+' '+fmt(kr.sade)+' m' : ''}</text>`;
 
   document.getElementById('profile').innerHTML =
     `<svg viewBox="0 0 ${W} ${H}" xmlns="http://www.w3.org/2000/svg">${g}</svg>`;
@@ -1820,7 +1870,7 @@ function renderAll(){
   const pn = document.getElementById('kalaPuoliNappi');
   if(pn) pn.style.display = (nakyma === 'kala') ? '' : 'none';
   const kn = document.getElementById('kaarrosNapit');
-  if(kn) kn.style.display = (nakyma === 'ylhaalta') ? 'inline-flex' : 'none';
+  if(kn) kn.style.display = (nakyma === 'ylhaalta' || nakyma === 'kala') ? 'inline-flex' : 'none';
   const items = (nakyma === 'ylhaalta') ? (drawTop(), collect())
               : (nakyma === 'kala')     ? (drawFish(), collect())
               : drawProfile();
@@ -2121,6 +2171,7 @@ function toggleGPS(){
 function stopGPS(){
   if(gpsId!==null) navigator.geolocation.clearWatch(gpsId);
   gpsId = null; lastFix = null;
+  gpsPuskuri = []; gpsViimePiirto = 0;
   if(wake){ try{wake.release();}catch(e){} wake = null; }
   const btn = document.getElementById('gpsBtn');
   btn.classList.remove('on'); btn.textContent = 'Käynnistä GPS';
@@ -2129,6 +2180,25 @@ function stopGPS(){
   speed = parseFloat(document.getElementById('spd').value)||0;
   renderAll();
 }
+/* GPS-NOPEUS: 10 SEKUNNIN KESKIARVO — muutettu 5.9.2026.
+   Aiemmin nopeus tasoitettiin eksponentiaalisesti ja kuva piirrettiin joka
+   paikannuksella. Veneessä se tarkoitti että luvut hyppivät ja kuva vilkkui
+   koko ajan. Käyttäjän sanoin: "ei vinguttaa jos tehdään tyhmää tässä."
+
+   Nyt kerätään havainnot puskuriin ja lasketaan aito keskiarvo 10 sekunnin
+   ikkunasta. Kuva päivittyy enintään 10 sekunnin välein — GPS antaa paikan
+   sekunnin välein, mutta uistelunopeus ei muutu sekunnissa. */
+const GPS_IKKUNA_MS = 10000;
+let gpsPuskuri = [];
+let gpsViimePiirto = 0;
+
+function gpsKeskiarvo(){
+  const nyt = Date.now();
+  gpsPuskuri = gpsPuskuri.filter(h => nyt - h.t <= GPS_IKKUNA_MS);
+  if(gpsPuskuri.length === 0) return null;
+  return gpsPuskuri.reduce((s,h)=>s+h.v, 0) / gpsPuskuri.length;
+}
+
 function onFix(pos){
   let v = pos.coords.speed;
   if(v === null || isNaN(v)){                    // laite ei anna nopeutta: lasketaan sijainneista
@@ -2146,11 +2216,24 @@ function onFix(pos){
   lastFix = {la:pos.coords.latitude, lo:pos.coords.longitude, t:pos.timestamp};
   if(v === null || isNaN(v)) return;
   const kmh = Math.max(0, v*3.6);
-  speed = speed*0.65 + kmh*0.35;                 // tasoitus, GPS-nopeus heittelee
+  gpsPuskuri.push({ t: Date.now(), v: kmh });
+  const ka = gpsKeskiarvo();
+  if(ka === null) return;
+  speed = ka;
+
   const chip = document.getElementById('gpsChip');
   chip.classList.add('live');
   chip.textContent = 'GPS ' + fmt(speed) + ' km/h';
-  drawProfile(); renderRods(collect());
+
+  // Kuva enintään 10 s välein. Nopeuslukema päivittyy silti joka kerta,
+  // koska se on yksi teksti eikä maksa mitään.
+  const nyt = Date.now();
+  if(nyt - gpsViimePiirto >= GPS_IKKUNA_MS){
+    gpsViimePiirto = nyt;
+    renderAll();
+  } else {
+    document.getElementById('roSpeed').textContent = fmt(speed);
+  }
 }
 function collect(){
   const items = [];
