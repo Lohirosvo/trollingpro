@@ -122,7 +122,7 @@ nav button.on{color:var(--sky)}
 <body>
 
 <header>
-  <div class="brand">Trolling<em>Pro</em> 2 <span style="font-size:10px;color:var(--ink-faint);font-weight:400">v3.7</span></div>
+  <div class="brand">Trolling<em>Pro</em> 2 <span style="font-size:10px;color:var(--ink-faint);font-weight:400">v3.8</span></div>
   <div id="gpsChip" class="chip">GPS pois</div>
 </header>
 
@@ -868,6 +868,18 @@ function aurinkoSuunta(t, doy, lat, lon, tz){
   return (az % 360 + 360) % 360;
 }
 
+/* SIJAINTI — lisätty 5.9.2026.
+   Aurinkolaskenta kopioitiin uistelututkasta, jossa on `currentLocation`.
+   TrollingProssa sitä EI OLE, joten kalan näkökulma kaatui heti kun sitä
+   yritettiin avata. Testit eivät huomanneet, koska ne asettivat muuttujan itse
+   — se oli tyngän virhe, ei koodin.
+
+   TrollingPro ei tarvitse järviluetteloa: aurinkoon riittää karkea sijainti.
+   Käytetään GPS-paikkaa kun se on saatavilla, muuten Etelä-Pohjanmaan
+   keskikohtaa. Auringon korkeus muuttuu Suomen sisällä muutaman asteen, joten
+   sadan kilometrin virhe ei ole merkitsevä. */
+let sijainti = { lat: 63.0, lon: 23.3 };   // Lappajärvi–Seinäjoki, oletus
+
 /* Auringon tila nyt. Palauttaa null jos aurinko on horisontin alla —
    silloin kajastusta ei piirretä, koska sitä ei ole. */
 function aurinkoNyt(lat, lon){
@@ -1215,7 +1227,7 @@ function drawFish(){
           stroke="#bfe9fb" stroke-width="2.5" stroke-opacity=".8"/>`;
 
   // AURINKO: kajastus pinnassa siitä suunnasta josta paistaa
-  const au = currentLocation ? aurinkoNyt(currentLocation.lat, currentLocation.lon) : null;
+  const au = aurinkoNyt(sijainti.lat, sijainti.lon);
   if(au){
     const kurssi = (typeof viimeisinKurssi === 'number') ? viimeisinKurssi : 0;
     const suht = ((au.suunta - kurssi)%360 + 360)%360;
@@ -1322,7 +1334,7 @@ function drawFish(){
 /* Kalan puoli. Oletus auringon puoli — vieheet näkyvät sieltä vasten valoa. */
 let kalaPuoli = 'oikea';
 function paivitaKalanPuoli(){
-  const au = currentLocation ? aurinkoNyt(currentLocation.lat, currentLocation.lon) : null;
+  const au = aurinkoNyt(sijainti.lat, sijainti.lon);
   if(!au) return;
   const kurssi = (typeof viimeisinKurssi === 'number') ? viimeisinKurssi : 0;
   const suht = ((au.suunta - kurssi)%360 + 360)%360;
@@ -1484,9 +1496,7 @@ function drawTop(){
   g += `<line x1="${CX}" y1="${CY}" x2="${CX}" y2="${H-mb}" stroke="#1d3a4c" stroke-width="1" stroke-dasharray="5 5"/>`;
 
   // AURINKO: haalea kajastus siitä suunnasta josta paistaa
-  const au = (typeof currentLocation === 'object' && currentLocation)
-    ? aurinkoNyt(currentLocation.lat, currentLocation.lon)
-    : aurinkoNyt(63.15, 23.65);
+  const au = aurinkoNyt(sijainti.lat, sijainti.lon);
   if(au){
     // Vene kulkee ylöspäin ruudulla; oletetaan kurssi pohjoiseen ellei GPS kerro muuta.
     const kurssi = (typeof viimeisinKurssi === 'number') ? viimeisinKurssi : 0;
@@ -2289,6 +2299,9 @@ function onFix(pos){
     } else v = null;
   }
   lastFix = {la:pos.coords.latitude, lo:pos.coords.longitude, t:pos.timestamp};
+  // Sijainti aurinkolaskentaa varten. Tarkkuus riittää: auringon korkeus
+  // muuttuu Suomen sisällä vain muutaman asteen.
+  sijainti = { lat: pos.coords.latitude, lon: pos.coords.longitude };
   if(v === null || isNaN(v)) return;
   const kmh = Math.max(0, v*3.6);
   gpsPuskuri.push({ t: Date.now(), v: kmh });
