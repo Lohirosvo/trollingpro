@@ -122,7 +122,7 @@ nav button.on{color:var(--sky)}
 <body>
 
 <header>
-  <div class="brand">Trolling<em>Pro</em> 2 <span style="font-size:10px;color:var(--ink-faint);font-weight:400">v4.3</span></div>
+  <div class="brand">Trolling<em>Pro</em> 2 <span style="font-size:10px;color:var(--ink-faint);font-weight:400">v4.4</span></div>
   <div id="gpsChip" class="chip">GPS pois</div>
 </header>
 
@@ -1847,7 +1847,7 @@ function renderPlaanarit(){
         <div class="lb">${nimi} — kelkka ${fmt(et[0])} m laidasta</div>
         <div class="num"><span style="font-size:11px;color:var(--ink-faint)">lähin</span>
           <input type="number" value="${plaanariSisin[side]}" step="1" min="6" max="12" style="width:60px"
-                 oninput="setPlaanariSisin('${side}',this.value)"><span>m</span></div>
+                 oninput="setPlaanariSisin('${side}',this.value)" onchange="paivitaListat()"><span>m</span></div>
       </div>
       <div style="font-size:11px;color:var(--ink-faint);margin-top:4px">
         ${b.map((r,i)=>`${lureById(r.lureId).name} ${fmt(et[i])} m`).join(' · ')}
@@ -1888,7 +1888,7 @@ function renderTakilat(){
           </select>
           <span style="font-size:11px;color:var(--ink-faint)">vapautus
             <input type="number" value="${u.vapFt||0}" step="5" min="0" style="width:52px;background:var(--sea-900);border:1px solid var(--line);color:var(--ink);border-radius:5px;padding:3px 5px;text-align:right"
-                   oninput="setVapautus(${i},${ui},this.value)"> ft</span>
+                   oninput="setVapautus(${i},${ui},this.value)" onchange="paivitaListat()"> ft</span>
         </div>
         ${takussa?`<div style="font-size:10.5px;color:var(--warn);margin-top:2px">⚠ ${
           takut.find(t2=>t2.a===ui||t2.b===ui).risteaa
@@ -1901,9 +1901,9 @@ function renderTakilat(){
         <div class="lb" style="color:${vari}">Takila ${i+1}</div>
         <div class="num">
           <input type="number" value="${tak.ft}" step="10" min="0" style="width:64px"
-                 oninput="setTakila(${i},'ft',this.value)"><span>ft</span>
+                 oninput="setTakila(${i},'ft',this.value)" onchange="paivitaListat()"><span>ft</span>
           <input type="number" value="${tak.kg}" step="0.5" min="1" style="width:56px"
-                 oninput="setTakila(${i},'kg',this.value)"><span>kg</span>
+                 oninput="setTakila(${i},'kg',this.value)" onchange="paivitaListat()"><span>kg</span>
         </div>
       </div>
       <div style="display:flex;gap:6px;margin:6px 0">
@@ -1911,7 +1911,7 @@ function renderTakilat(){
            style="padding:4px 10px;font-size:12px" onclick="setUistimia(${i},${n})">${n} uistin${n>1?'ta':''}</button>`).join('')}
         <span style="font-size:11px;color:var(--ink-faint);align-self:center">väli
           <input type="number" value="${tak.vali}" step="5" min="5" style="width:48px;background:var(--sea-900);border:1px solid var(--line);color:var(--ink);border-radius:5px;padding:3px 5px;text-align:right"
-                 oninput="setTakila(${i},'vali',this.value)"> ft</span>
+                 oninput="setTakila(${i},'vali',this.value)" onchange="paivitaListat()"> ft</span>
       </div>
       ${rivit}
       <div style="font-size:10.5px;color:var(--ink-faint);margin-top:4px">
@@ -1936,16 +1936,39 @@ function pohjaVaroitus(tk){
   return '';
 }
 
+/* KIRJOITTAMINEN KENTTIIN — korjattu 5.9.2026.
+   Aiemmin jokainen näppäinpainallus kutsui renderAll():a, joka rakensi koko
+   takila- ja plaanarilistan uudelleen innerHTML:llä. Kirjoitettavana ollut
+   kenttä tuhoutui ja korvattiin uudella, jolloin kohdistus ja kursorin paikka
+   katosivat joka merkin jälkeen. Veneessä se on käyttökelvotonta.
+
+   Ratkaisu: kirjoittaessa päivitetään malli ja piirretään kuvaaja, mutta EI
+   rakenneta uudelleen sitä listaa jossa kenttä on. Lista päivitetään vasta kun
+   kentästä poistutaan (onchange/blur) tai kun jotain muuta muuttuu. */
+function renderKevyt(){
+  // Kuvaaja ja lukemat päivittyvät, listat jätetään rauhaan.
+  try {
+    if(nakyma === 'ylhaalta') drawTop();
+    else if(nakyma === 'kala') drawFish();
+    else drawProfile();
+  } catch(e) { naytaVirhe('Piirto: ' + e.message, null, null, null, e); }
+  try { saveAll(); } catch(e) { /* tallennus ei saa estää kirjoittamista */ }
+}
+
+/* Kutsutaan kun kentästä poistutaan: silloin listan saa rakentaa uudelleen,
+   jotta johdetut luvut (kelkan paikka, syvyydet, varoitukset) päivittyvät. */
+function paivitaListat(){ renderAll(); }
+
 function setUistin(i,ui,id){ takilat[i].uistimet[ui].lureId = id || null; renderAll(); }
 function setVapautus(i,ui,v){
   const n = parseFloat(v);
   if(!isNaN(n) && n >= 0) takilat[i].uistimet[ui].vapFt = n;
-  renderAll();
+  renderKevyt();
 }
 function setTakila(i,k,v){
   const n = parseFloat(v);
   if(!isNaN(n)) takilat[i][k] = n;
-  renderAll();
+  renderKevyt();
 }
 function setUistimia(i,n){
   const cur = takilat[i].uistimet;
@@ -2019,7 +2042,7 @@ let plaanariSisin = { left: 8, right: 8 };
 function setPlaanariSisin(side, v){
   const n = parseFloat(v);
   if(!isNaN(n)) plaanariSisin[side] = Math.max(6, Math.min(12, n));
-  renderAll();
+  renderKevyt();
 }
 
 /* Muokattavan vavan indeksi, tai null jos lisätään uusi. */
