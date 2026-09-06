@@ -122,7 +122,7 @@ nav button.on{color:var(--sky)}
 <body>
 
 <header>
-  <div class="brand">Trolling<em>Pro</em> 2 <span style="font-size:10px;color:var(--ink-faint);font-weight:400">v3.2</span></div>
+  <div class="brand">Trolling<em>Pro</em> 2 <span style="font-size:10px;color:var(--ink-faint);font-weight:400">v3.3</span></div>
   <div id="gpsChip" class="chip">GPS pois</div>
 </header>
 
@@ -738,6 +738,15 @@ const SIVUVAPA_ULOS = 2.0;                   // laidasta
 /* Uistinten väli selkäsiimassa: 20 jalkaa eli 6,1 m.
    Muutettu 3 metristä 5.9.2026 käyttäjän mittojen mukaan. Väli ilmoitetaan
    jalkoina, koska siimaa mitataan jaloissa — metriluku on muunnos. */
+/* Lohirosvon iso kelkka jää TASAN 15° kulmaan taakse ja sivulle, etäisyydestä
+   riippumatta. Se ei siis ole suoraan veneen sivulla vaan taempana, ja mitä
+   ulompana se on, sitä kauempana takana. Sama koskee kaikkia selkäsiiman
+   kiinnityspisteitä — ne ovat samalla suoralla.
+     y = -x * tan(15°)   eli 38 m sivulle = 10 m taakse
+   Käyttäjän oma havainto omasta kelkastaan, 5.9.2026. */
+const PLAANARI_KULMA = 15;
+const PLAANARI_TAKA = Math.tan(PLAANARI_KULMA*Math.PI/180);   // 0,268
+
 const PLAANARI_ASKEL_FT = 20;
 const PLAANARI_ASKEL = PLAANARI_ASKEL_FT * 0.3048;   // 6,096 m
 const PLAANARI_MAX   = 50;
@@ -1292,13 +1301,13 @@ function drawTop(){
     const boardRods = rods[side].filter(r=>r.board);
     if(boardRods.length === 0) return;
     const uloin = plaanariKelkka(boardRods.length, plaanariSisin[side]);
-    const bx = X(merkki*(VENE_LAITA + uloin)), by = Y(0);
-    g += `<line x1="${X(merkki*VENE_LAITA).toFixed(1)}" y1="${by}" x2="${bx.toFixed(1)}" y2="${by}"
+    const bx = X(merkki*(VENE_LAITA + uloin)), by = Y(-uloin*PLAANARI_TAKA);
+    g += `<line x1="${X(merkki*VENE_LAITA).toFixed(1)}" y1="${Y(0)}" x2="${bx.toFixed(1)}" y2="${by.toFixed(1)}"
             stroke="#c9d4da" stroke-width="2" stroke-opacity=".8"/>`;
     // kelkka
     g += `<rect x="${(bx-7).toFixed(1)}" y="${(by-5).toFixed(1)}" width="14" height="10" rx="2"
             fill="#e0a33c" stroke="#04121a" stroke-width="1"/>`;
-    g += `<text x="${bx.toFixed(1)}" y="${(by-10).toFixed(1)}" text-anchor="middle" font-size="10" fill="#e0a33c">kelkka</text>`;
+    g += `<text x="${bx.toFixed(1)}" y="${(by-10).toFixed(1)}" text-anchor="middle" font-size="10" fill="#e0a33c">kelkka ${PLAANARI_KULMA}°</text>`;
   });
 
   // KOHTEET: kiinnityspisteestä siima taakse, uistin päässä
@@ -1714,7 +1723,8 @@ function vavanSijainti(side, rod, i){
     const jarj = boardit.indexOf(rod);
     const et = plaanariEtaisyydet(boardit.length, plaanariSisin[side]);
     const d = (jarj >= 0 && et[jarj] !== undefined) ? et[jarj] : 8;
-    return { x: merkki*(VENE_LAITA + d), y: 0, tapa:'plaanari', ulos:d };
+    // Kiinnityspiste on selkäsiimalla, joka kulkee 15° taakse ja sivulle.
+    return { x: merkki*(VENE_LAITA + d), y: -d*PLAANARI_TAKA, tapa:'plaanari', ulos:d };
   }
   return { x: merkki*(VENE_LAITA + SIVUVAPA_ULOS), y: 0, tapa: rod.diver ? 'diver' : 'vapa' };
 }
