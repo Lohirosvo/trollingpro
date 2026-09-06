@@ -122,7 +122,7 @@ nav button.on{color:var(--sky)}
 <body>
 
 <header>
-  <div class="brand">Trolling<em>Pro</em> 2</div>
+  <div class="brand">Trolling<em>Pro</em> 2 <span style="font-size:10px;color:var(--ink-faint);font-weight:400">v2.4</span></div>
   <div id="gpsChip" class="chip">GPS pois</div>
 </header>
 
@@ -155,6 +155,16 @@ nav button.on{color:var(--sky)}
       <input id="tgt" type="range" min="0" max="12" step="0.5" value="6" oninput="setTarget(this.value)">
     </div>
 
+    <div class="card" style="margin-top:10px">
+      <h3>Takilat</h3>
+      <div id="takilaLista"></div>
+      <div class="row" style="gap:6px">
+        <button class="btn sm" onclick="lisaaTakila()">Lisää takila</button>
+        <button class="btn sm ghost" onclick="poistaTakila()">Poista viimeinen</button>
+      </div>
+      <p class="hint">Kuula uppoaa omalla painollaan; vauhti työntää sitä taaksepäin (blowback). Uistin kulkee vapauttajan syvyydessä — pitkä peruke ja kelluva vaappu nostavat sitä jonkin verran, mutta sitä ei mallinneta.</p>
+    </div>
+
     <div class="sides">
       <div class="side">
         <h2><i class="dot" style="background:var(--port)"></i>Paapuuri</h2>
@@ -181,8 +191,12 @@ nav button.on{color:var(--sky)}
         <div class="num"><input id="calcFt" type="number" value="100" step="5" min="0" oninput="runCalc()"><span>ft</span></div></div>
       <div class="row"><div><div class="lb">Siiman paksuus</div><div class="sub">ohuempi siima ui syvemmälle</div></div>
         <div class="num"><input id="calcDia" type="number" value="0.45" step="0.01" min="0.05" oninput="runCalc()"><span>mm</span></div></div>
-      <div class="row"><div class="lb">Lyijypaino</div>
+      <div class="row" id="calcWRow"><div class="lb">Lyijypaino</div>
         <div class="num"><input id="calcW" type="number" value="0" step="10" min="0" oninput="runCalc()"><span>g</span></div></div>
+      <div class="row"><div><div class="lb">Dipsy Diver</div><div class="sub">korvaa lyijypainon</div></div>
+        <div class="num"><select id="calcDiver" onchange="runCalc()">
+          <option value="">ei</option><option value="0">asetus 0</option><option value="1">asetus 1</option>
+          <option value="2">asetus 2</option><option value="3">asetus 3</option></select></div></div>
       <div class="row"><div class="lb">Nopeus</div>
         <div class="num"><input id="calcS" type="number" value="3.0" step="0.1" min="0" oninput="runCalc()"><span>km/h</span></div></div>
       <div class="row res"><div><div class="lb">Uistimen syvyys</div><div id="calcMeta" class="sub"></div></div>
@@ -263,7 +277,12 @@ nav button.on{color:var(--sky)}
         <div id="rodFtPills" class="pills"></div>
         <div class="row"><div class="lb">Tarkka määrä</div><div class="num"><input id="rodFt" type="number" value="100" step="5" min="0" oninput="syncRodSheet()"><span>ft</span></div></div>
       </div>
-      <div class="card"><h3>Lyijypaino</h3>
+      <div class="card"><h3>Dipsy Diver</h3>
+        <div id="rodDiverPills" class="pills"></div>
+        <div id="rodDiverLine" class="pills" style="display:none;border-top:1px solid var(--line-soft)"></div>
+        <p class="hint" id="rodDiverHint" style="display:none">Syvyys = siimaa ulkona jaettuna suhdeluvulla. Sama malli kuin uistelututkan laskurissa. Luhr Jensenin taulukkoa ei käytetä, koska se pätee O-rengas paikallaan.</p>
+      </div>
+      <div class="card" id="rodWeightCard"><h3>Lyijypaino</h3>
         <div id="rodWPills" class="pills"></div>
         <div class="row"><div class="lb">Tarkka paino</div><div class="num"><input id="rodW" type="number" value="0" step="5" min="0" oninput="syncRodSheet()"><span>g</span></div></div>
       </div>
@@ -414,6 +433,206 @@ function solve(lure, lengthFt, sinkerG, lineDiaMm, speedKmH){
 }
 
 /* ============================================================
+   DIPSY DIVER  — lisätty 5.9.2026
+   ============================================================
+   MIKSI ERI MALLI KUIN MUILLE UISTIMILLE:
+   Vapaasti uiva vaappu ja lyijypaino noudattavat voimatasapainoa, jonka
+   integrate() ratkaisee. Dipsy Diver ei: se on kiekko, joka KÄÄNTYY vinoon
+   ja tuottaa nostetta kuin siipi. Sen syvyys ei seuraa uistimen painosta
+   vaan asetuksesta (0-3), joka määrää kiekon kulman.
+
+   Käytännön sääntö, jota diverikalastajat käyttävät: siimaa ulkona jaettuna
+   suhdeluvulla antaa syvyyden. Suhde riippuu asetuksesta, siiman tyypistä ja
+   paksuudesta sekä vetonopeudesta.
+
+   TÄMÄ ON SAMA MALLI JA SAMAT KERTOIMET kuin uistelututkan syvyyslaskurissa
+   (sdComputeRatio). Kaksi sovellusta ei saa olla eri mieltä samasta asiasta.
+
+   LUHR JENSENIN OMAA TAULUKKOA EI KÄYTETÄ TARKOITUKSELLA: se pätee O-rengas
+   paikallaan, ja käyttäjä ajaa ilman rengasta. Tämä on kirjattu myös
+   uistelututkaan — älä palauta taulukkoa kumpaankaan.
+*/
+const SD_BASE_RATIO = { 0: 2.2, 1: 2.6, 2: 3.0, 3: 3.6 };
+
+function sdLineTypeFactor(type){
+  // Kuitu ei veny ja on ohuempi vastaavalla lujuudella → vähemmän vastusta → syvemmälle.
+  return type === 'kuitu' ? 0.85 : 1.0;
+}
+function sdDiameterFactor(dia){
+  // Referenssi 0,45 mm. Paksumpi siima = enemmän vastusta = matalampi sukellus.
+  if(isNaN(dia) || dia <= 0) return 1.0;
+  return 1 + (dia - 0.45)*0.8;
+}
+function sdSpeedFactor(kmh){
+  // Referenssi 4,0 km/h. Kovempi vauhti nostaa diveriä → matalampi.
+  if(isNaN(kmh) || kmh <= 0) return 1.0;
+  return Math.max(0.7, 1 + (kmh - 4.0)*0.06);
+}
+function sdRatio(setting, lineType, dia, kmh){
+  const base = SD_BASE_RATIO[setting] !== undefined ? SD_BASE_RATIO[setting] : SD_BASE_RATIO[0];
+  return base * sdLineTypeFactor(lineType) * sdDiameterFactor(dia) * sdSpeedFactor(kmh);
+}
+
+/* Diverin veto. Palauttaa saman muodon kuin solve(), jotta piirto ja
+   vapakortit toimivat ilman erityistapauksia.
+
+   SIIMAN MUOTO: diverin siima on käytännössä SUORA. Vapaasti uivan uistimen
+   siima kaartuu, koska voimat ovat pieniä ja jakautuvat pitkälle matkalle;
+   diver vetää niin voimakkaasti, että siima kiristyy suoraksi. Siksi pts on
+   kaksi pistettä eikä integroitu käyrä.
+
+   SIVUSUUNTA: diver menee myös sivulle, mutta tämä on sivukuva — sivusuunta
+   ei näy siinä. Vaakaetäisyys on siksi geometrinen projektio, ja todellinen
+   etäisyys suoraan takana on tätä pienempi. Merkitty myös käyttöliittymään. */
+function solveDiver(rod, speedKmH){
+  const L = Math.max(0, rod.ft)*FT;
+  const ratio = sdRatio(rod.dSetting, rod.dLineType || 'mono', rod.dia, speedKmH);
+  const depth = Math.min(L, ratio > 0 ? L/ratio : 0);
+  const run = Math.sqrt(Math.max(0, L*L - depth*depth));
+  const ang = L > 0 ? Math.acos(Math.min(1, depth/L))*180/Math.PI : 90;
+  return { depth:depth, run:run, angle:ang, pts:[[0,0],[run,depth]], L:L, ratio:ratio, diver:true };
+}
+
+/* Diverin kuvake: kiekko vinossa, kuten se oikeasti kulkee. */
+function diverIcon(x, y, color){
+  return `<g>
+    <ellipse cx="${x}" cy="${y}" rx="5" ry="10" fill="${color}" stroke="#04121a" stroke-width="1.2"
+             transform="rotate(-28 ${x} ${y})"/>
+    <circle cx="${x}" cy="${y}" r="2" fill="#04121a" opacity=".55"/>
+  </g>`;
+}
+
+/* ============================================================
+   TAKILA (downrigger) — lisätty 5.9.2026
+   ============================================================
+   MIKSI OMA MALLI:
+   Takilakuula ei uise eikä sukella — se roikkuu vaijerin päässä ja uppoaa
+   omalla painollaan. Syvyyden määrää vaijerin pituus miinus se, paljonko
+   vauhti työntää kuulaa taaksepäin (blowback). Uistin ei ole kuulassa kiinni
+   vaan vapauttimessa, joka irtoaa kun kala ottaa.
+
+   FYSIIKKA ON SAMA KUIN MUILLA: käytetään integrate()-funktiota, joka
+   ratkaisee siiman muodon voimatasapainosta. Takilan tapauksessa "uistin" on
+   5 kg lyijykuula ja "siima" on vaijeri. Ei uutta mallia, vain eri parametrit.
+
+   VÄLIVAPAUTTAJAT (stacking):
+   Yhteen vaijeriin voi kiinnittää useita uistimia eri korkeuksille. Alin on
+   kuulan kohdalla, seuraavat sen yläpuolella vapauttajien välein.
+
+   UISTIMEN SYVYYS VAPAUTTAJASSA:
+   Oletetaan uistimen kulkevan vapauttajan syvyydessä. Se on takilakalastuksen
+   koko idea — uistin pysyy asetetussa syvyydessä eikä ui omiaan. Pitkä peruke
+   ja kelluva vaappu nostavat sitä jonkin verran, mutta sitä EI mallinneta,
+   koska nousun määrä riippuu perukkeen pituudesta ja vieheen nosteesta eikä
+   siitä ole mittausta. Käyttöliittymä sanoo tämän.
+*/
+const TAKILA_VAIJERI_MM = 0.9;    // sovitettu Cannonin dataan, ks. alla
+const TAKILA_KUULA_KG   = 5.0;    // käyttäjän oma kuula
+const TAKILA_VALI_FT    = 10;     // vapauttajien väli, käyttäjän oletus
+
+/* KERTOIMET SOVITETTU VALMISTAJAN MITTAUKSIIN 5.9.2026.
+   Ensimmäinen versio käytti samoja vastuskertoimia kuin kalastussiima (cdLine 1,2,
+   vaijeri 1,2 mm). Se antoi noin KAKSINKERTAISEN blowbackin verrattuna Cannonin
+   omiin kaavioihin — 8 lb painolla 160 ft vaijeria ja 4 MPH: malli 86 ft, Cannon
+   120 ft.
+
+   Sovitus tehtiin Cannonin yhdeksään kaaviopisteeseen (8/10/12 lb × 2/4/6 MPH,
+   160 ft vaijeria) sekä heidän sanalliseen esimerkkiinsä (6,5 km/h, 3,6 kg, 30 m
+   vaijeria → kuula 24 m). Tulos:
+
+     vaijerin vastuskerroin  0,65   (oli 1,2 — kalastussiiman arvo)
+     kuulan vastuskerroin    0,675  (oli 0,50 — pallon arvo)
+     vaijerin halkaisija     0,9 mm (oli 1,2)
+
+   Sovituksen jälkeen jäännösvirheet ovat 1-5 ft 160 ft asteikolla eli kaavion
+   lukutarkkuuden sisällä, ja sanallinen esimerkki osuu 1,3 m päähän.
+
+   HUOM: nämä kertoimet pätevät VAIJERILLE JA TAKILAKUULALLE, eivät kalastussiimalle.
+   Siksi ne ovat omat vakionsa eivätkä muuta CFG:tä — vaapun ja diverin fysiikka
+   pysyy ennallaan. */
+const TAKILA_CD_VAIJERI = 0.65;
+const TAKILA_CD_KUULA   = 0.675;
+
+/* Oma integraattori vaijerille, koska integrate() käyttää kalastussiiman
+   vastuskertoimia globaalista CFG:stä. Muoto on sama, vain kertoimet eri. */
+function integroiVaijeri(L, dM, v, Fv0, Fh0){
+  if(!(L > 0)) return {depth:0, run:0, pts:[[0,0]]};
+  if(Fv0 <= 1e-7) return {depth:0, run:L, pts:[[0,0],[L,0]]};
+  const steps = 60, ds = L/steps, per = Math.PI*dM;
+  let H = Math.max(Fh0,0), V = Fv0, z = 0, x = 0;
+  const pts = [[0,0]];
+  for(let i=0;i<steps;i++){
+    const th = Math.atan2(H, Math.max(V,1e-4)), c = Math.cos(th), s = Math.sin(th);
+    z += ds*c; x += ds*s; pts.push([x,z]);
+    const dN = 0.5*RHO_W*TAKILA_CD_VAIJERI*dM*ds*Math.pow(v*c,2);
+    const dT = 0.5*RHO_W*CFG.cfLine*per*ds*Math.pow(v*s,2);
+    H += dN*c + dT*s;
+    V -= dN*s + dT*c;
+  }
+  return {depth:z, run:x, pts:pts};
+}
+
+function takilaKuulanVastus(g, v){
+  if(g <= 0) return 0;
+  const r = Math.cbrt(3*(g/1000/RHO_PB)/(4*Math.PI));
+  return 0.5*RHO_W*TAKILA_CD_KUULA*Math.PI*r*r*v*v;
+}
+
+/* Vaijerin muoto ja kuulan syvyys.
+   Palauttaa myös pisteet, jotta vapauttajien syvyydet voidaan lukea käyrältä. */
+function solveTakila(tak, speedKmH){
+  const v = Math.max(0, speedKmH)/3.6;
+  const L = Math.max(0, tak.ft)*FT;
+  const g = (tak.kg !== undefined ? tak.kg : TAKILA_KUULA_KG) * 1000;
+  const dia = (tak.dia !== undefined ? tak.dia : TAKILA_VAIJERI_MM);
+  const Fv = sinkerNet(g);
+  const Fh = takilaKuulanVastus(g, v);
+  const r = integroiVaijeri(L, dia/1000, v, Fv, Fh);
+  const k = CFG.calib;
+  const depth = Math.min(L, r.depth*k);
+  const scale = r.depth > 0 ? depth/r.depth : 1;
+  const run = Math.min(r.run, Math.sqrt(Math.max(0, L*L - depth*depth)));
+  const rs = r.run > 0 ? run/r.run : 1;
+  const pts = r.pts.map(p => [p[0]*rs, p[1]*scale]);
+  return { depth:depth, run:run, pts:pts, L:L, takila:true,
+           blowback: L > 0 ? (1 - depth/L) : 0 };
+}
+
+/* Vapauttajan sijainti vaijerilla, kun se on offsetFt jalkaa kuulasta ylöspäin.
+   pts[0] on kuula, viimeinen on veneen kärki — sama järjestys kuin muualla. */
+function takilaVapauttaja(tk, offsetFt){
+  const off = Math.max(0, offsetFt)*FT;
+  if(off <= 0 || tk.L <= 0) return { depth:tk.depth, run:tk.run };
+  const askel = tk.L / Math.max(1, tk.pts.length - 1);
+  const i = Math.min(tk.pts.length - 1, Math.round(off/askel));
+  const p = tk.pts[i];
+  // pts on mitattu kuulasta ylöspäin: p[1] = nousu kuulasta, p[0] = siirtymä eteen.
+  return { depth: Math.max(0, tk.depth - p[1]), run: Math.max(0, tk.run - p[0]) };
+}
+
+/* Takilan kuvake: pyöreä kuula ja lyhyt evä, kuten oikeassa takilakuulassa. */
+function takilaIcon(x, y, color){
+  return `<g>
+    <circle cx="${x}" cy="${y}" r="7" fill="#8f9aa1" stroke="#04121a" stroke-width="1.2"/>
+    <path d="M${x+5},${y-6} l9,-4 l0,9 z" fill="${color}" stroke="#04121a" stroke-width="1"/>
+  </g>`;
+}
+
+/* Vapauttajan kuvake: pieni pinne vaijerissa. */
+function vapauttajaIcon(x, y, color){
+  return `<g>
+    <rect x="${x-3}" y="${y-4}" width="6" height="8" rx="1.5" fill="${color}" stroke="#04121a" stroke-width="1"/>
+  </g>`;
+}
+
+/* Yhtenäinen ratkaisija: valitsee mallin sen mukaan onko vavassa diver.
+   Kaikki piirto ja kortit kutsuvat tätä, jotta erityistapauksia ei ole. */
+function solveRod(rod, speedKmH){
+  if(rod.diver) return solveDiver(rod, speedKmH);
+  return solve(lureById(rod.lureId), rod.ft, rod.w, rod.dia, speedKmH);
+}
+
+/* ============================================================
    2. TILA
    ============================================================ */
 /* Sukelluskäyrä Rapala Husky Jerk HJ08 -kortista (Precision Trolling, 10 lb Berkley XT
@@ -429,20 +648,29 @@ const DEFAULT_LURES = [
 ];
 
 let lures = [], rods = {left:[], right:[]};
+/* Takilat: 2-6 kpl, oletuksena 2 (käyttäjän oma kalusto).
+   Jokaisessa 1-3 uistinta välivapauttajilla, oletusväli 10 ft. */
+let takilat = [];
+function oletusTakila(){
+  return { ft: 60, kg: TAKILA_KUULA_KG, dia: TAKILA_VAIJERI_MM,
+           vali: TAKILA_VALI_FT, uistimet: [{ lureId: null }] };
+}
 let speed = 3.0, bottomD = 8, targetD = 6, gpsId = null, wake = null, lastFix = null;
 
+const TAKILA_VARIT = ['#c9d4da','#9fb8c4','#7fa0ae','#6b8d9c','#5a7a88','#4a6875'];
 const PORT_COLORS = ['#ff5f57','#ff8f4d','#ff4d8f'];
 const STBD_COLORS = ['#3ddc84','#4cc3f0','#b3e04a'];
 const colorOf = (side, i) => (side==='left'?PORT_COLORS:STBD_COLORS)[i % 3];
 
 function store(k,v){ try{ localStorage.setItem(k, JSON.stringify(v)); }catch(e){} }
 function load(k,d){ try{ const s = localStorage.getItem(k); return s ? JSON.parse(s) : d; }catch(e){ return d; } }
-function saveAll(){ store('tp2_lures_v4',lures); store('tp2_rods',rods); store('tp2_cfg_v2',CFG); store('tp2_env',{bottomD:bottomD,targetD:targetD,speed:speed}); }
+function saveAll(){ store('tp2_lures_v4',lures); store('tp2_rods',rods); store('tp2_takilat',takilat); store('tp2_cfg_v2',CFG); store('tp2_env',{bottomD:bottomD,targetD:targetD,speed:speed}); }
 
 function boot(){
   lures = load('tp2_lures_v4', null) || DEFAULT_LURES.slice();
   lures.forEach(l=>{ if(!l.buoy) l.buoy = (l.type==='spoon'?'sink':'float'); if(!l.dragMul) l.dragMul = 1; });
   rods  = load('tp2_rods', null) || {left:[], right:[]};
+  takilat = load('tp2_takilat', null) || [oletusTakila(), oletusTakila()];
   CFG   = Object.assign({}, DEFAULT_CFG, load('tp2_cfg_v2', {}));
   const env = load('tp2_env', {});
   bottomD = env.bottomD ?? 8; targetD = env.targetD ?? 6; speed = env.speed ?? 3.0;
@@ -465,32 +693,94 @@ const lureById = id => lures.find(l=>l.id===id) || lures[0];
 /* ============================================================
    3. PROFIILIKUVA  (mittakaava 1:1, syvyys 0–12 m, siima 0–100 ft)
    ============================================================ */
-const VW = 720, SURF = 100, MAXD = 12, MAXRUN = 100*FT;
+const VW = 720, SURF = 100, MAXRUN = 100*FT;
 const X1 = 596, PXM = 540/MAXRUN, X0 = 556 - MAXRUN*PXM;   // px/m sama x- ja y-suunnassa
-const VH = SURF + MAXD*PXM + 30;
+
+/* SYVYYSASTEIKKO VENYY — muutettu 5.9.2026.
+   Asteikko oli kiinteä 12 m, mikä riitti vaapuille mutta ei divereille: Dipsy
+   asetuksella 0 menee sadalla jalalla noin 14 metriin, eli aina kuvan ulkopuolelle.
+   Silloin visualisointi ei auttanut juuri siinä missä sitä eniten tarvitaan.
+
+   Mittakaava pysyy 1:1 (PXM ei muutu) — vain kuva kasvaa. Näin syvyys ja etäisyys
+   ovat edelleen vertailukelpoisia keskenään, mikä on koko kuvan idea.
+   Pyöristetään kahden metrin välein, jottei kuva hypi joka nykäyksellä. */
+const MAXD_MIN = 12, MAXD_MAX = 30;
+let MAXD = MAXD_MIN, VH = SURF + MAXD*PXM + 30;
+
+function paivitaAsteikko(syvin){
+  const tarve = Math.max(MAXD_MIN, Math.min(MAXD_MAX, Math.ceil((syvin + 1.5)/2)*2));
+  MAXD = tarve;
+  VH = SURF + MAXD*PXM + 30;
+}
 const TIP = { left:[556, SURF-54], right:[574, SURF-38] };   // vapojen kärjet
 
 function boatSVG(){
-  // runko: perä x=598, keula x=690  => 5,2 m todellisessa mittakaavassa
+  /* TAKILAVENE — piirretty uudelleen 5.9.2026.
+     Runko 596 (perä) - 692 (keula) = 96 px = n. 5,4 m mittakaavassa 1:1.
+     Vapojen kärjet (TIP) ja takilaköysien lähtökohta (X1) pidetään ennallaan,
+     jotta siimat kiinnittyvät oikeisiin paikkoihin.
+     Katsotaan sivulta: keula oikealle, vieheet vasemmalle perän taakse. */
   return `
   <g id="boat">
-    <path d="M596,66 L692,58 Q700,60 698,70 L692,86 Q684,106 664,110 L616,110 Q602,108 596,96 Z" fill="url(#hull)" stroke="#8fb6c9" stroke-width="1.2"/>
-    <path d="M596,96 L692,88" stroke="#0d202b" stroke-width="1"/>
-    <path d="M598,90 Q640,96 690,86" stroke="#ff5f57" stroke-width="2.5" fill="none" opacity=".85"/>
-    <path d="M646,66 L664,64 L670,50 L652,52 Z" fill="#bfe6f7" opacity=".55" stroke="#dff2fb" stroke-width="1"/>
-    <rect x="640" y="64" width="26" height="10" rx="2" fill="#123243"/>
-    <rect x="618" y="62" width="16" height="6" rx="2" fill="#1b4258"/>
-    <rect x="612" y="55" width="4" height="9" rx="1.5" fill="#1b4258"/>
-    <g stroke="#9fc6d8" stroke-width="1.4" fill="none">
-      <path d="M604,64 L560,44"/><path d="M606,66 L578,60"/>
-    </g>
-    <circle cx="556" cy="46" r="2" fill="#e7f4fb"/><circle cx="574" cy="62" r="2" fill="#e7f4fb"/>
+    <!-- runko: terävä keula, leveä perä, kaareva pohja -->
+    <path d="M596,64 L604,60 L688,52 Q698,52 700,60 L698,74
+             Q694,98 674,110 L620,112 Q602,110 596,98 Z"
+          fill="url(#hull)" stroke="#93bcd0" stroke-width="1.3"/>
+    <!-- kaari eli chine, antaa rungolle muotoa -->
+    <path d="M598,92 Q640,100 694,84" stroke="#5b8298" stroke-width="1.1" fill="none" opacity=".8"/>
+    <!-- vesiraita -->
+    <path d="M598,86 Q642,94 696,78" stroke="#ff5f57" stroke-width="2.6" fill="none" opacity=".9"/>
+    <!-- perälauta -->
+    <path d="M596,64 L596,98" stroke="#6f93a5" stroke-width="1.6"/>
+
+    <!-- ohjaamo -->
+    <path d="M634,60 L636,34 Q637,29 643,29 L668,27 Q674,27 675,32 L678,56 Z"
+          fill="#d7e9f2" stroke="#8fb6c9" stroke-width="1.2"/>
+    <!-- etulasi vinossa, kuten oikeassa veneessä -->
+    <path d="M666,29 L676,33 L678,52 L668,50 Z" fill="#7fc6e8" opacity=".65" stroke="#c9e8f6" stroke-width=".9"/>
+    <!-- sivuikkunat -->
+    <rect x="641" y="34" width="9" height="11" rx="1.5" fill="#7fc6e8" opacity=".55"/>
+    <rect x="652" y="33" width="9" height="11" rx="1.5" fill="#7fc6e8" opacity=".55"/>
+    <!-- kaide ohjaamon takana -->
+    <path d="M632,58 L630,44" stroke="#9fc6d8" stroke-width="1.6"/>
+    <path d="M630,44 L622,46" stroke="#9fc6d8" stroke-width="1.4"/>
+
+    <!-- keulakaide -->
+    <path d="M690,52 L694,42" stroke="#9fc6d8" stroke-width="1.4"/>
+    <path d="M694,42 L678,44" stroke="#9fc6d8" stroke-width="1.2"/>
+
+    <!-- perämoottori -->
     <g>
-      <rect x="582" y="60" width="16" height="26" rx="3" fill="#16333f" stroke="#7fa6b8" stroke-width="1"/>
-      <rect x="586" y="86" width="8" height="20" fill="#16333f" stroke="#7fa6b8" stroke-width="1"/>
-      <path d="M586,106 L594,106 L596,120 L588,118 Z" fill="#16333f" stroke="#7fa6b8" stroke-width="1"/>
-      <path d="M580,116 L602,116" stroke="#7fa6b8" stroke-width="2"/>
+      <rect x="582" y="54" width="15" height="24" rx="3.5" fill="#1b3947" stroke="#8fb6c9" stroke-width="1.1"/>
+      <rect x="586" y="78" width="7" height="18" fill="#1b3947" stroke="#8fb6c9" stroke-width="1"/>
+      <path d="M585,96 L594,96 L597,110 L588,108 Z" fill="#1b3947" stroke="#8fb6c9" stroke-width="1"/>
+      <path d="M579,106 L603,106" stroke="#8fb6c9" stroke-width="2.2"/>
+      <ellipse cx="589" cy="104" rx="2.5" ry="4" fill="#0d202b"/>
     </g>
+
+    <!-- TAKILAPUOMIT: kaksi, eri korkeuksilla kuten oikeassa veneessä -->
+    <g stroke="#c9d4da" fill="none">
+      <path d="M600,58 L578,50" stroke-width="2.6"/>
+      <circle cx="578" cy="50" r="2.4" fill="#c9d4da" stroke="none"/>
+      <rect x="600" y="52" width="9" height="11" rx="2" fill="#5a7a88" stroke="#c9d4da" stroke-width="1"/>
+      <path d="M604,44 L586,38" stroke-width="2.2" opacity=".85"/>
+      <circle cx="586" cy="38" r="2.1" fill="#9fb8c4" stroke="none"/>
+      <rect x="603" y="40" width="8" height="9" rx="2" fill="#5a7a88" stroke="#9fb8c4" stroke-width="1"/>
+    </g>
+
+    <!-- VAPATELINEET ja vavat: kärjet TIP-pisteissä -->
+    <g stroke="#9fc6d8" stroke-width="1.5" fill="none">
+      <path d="M608,60 Q582,50 556,46"/>
+      <path d="M612,58 Q594,58 574,62"/>
+    </g>
+    <circle cx="556" cy="46" r="2.2" fill="#e7f4fb"/>
+    <circle cx="574" cy="62" r="2.2" fill="#e7f4fb"/>
+    <rect x="606" y="56" width="7" height="8" rx="1.5" fill="#2b4d5e" stroke="#9fc6d8" stroke-width=".9"/>
+    <rect x="612" y="54" width="7" height="8" rx="1.5" fill="#2b4d5e" stroke="#9fc6d8" stroke-width=".9"/>
+
+    <!-- antenni, tekee siluetista tunnistettavan -->
+    <path d="M646,27 L644,10" stroke="#9fc6d8" stroke-width="1.3"/>
+    <circle cx="644" cy="9" r="1.6" fill="#e7f4fb"/>
   </g>`;
 }
 
@@ -509,16 +799,22 @@ function drawProfile(){
   ['left','right'].forEach(side=>{
     rods[side].forEach((rod,i)=>{
       const lure = lureById(rod.lureId);
-      const s = solve(lure, rod.ft, rod.w, rod.dia, speed);
+      const s = solveRod(rod, speed);
       items.push({side:side, i:i, rod:rod, lure:lure, s:s, color:colorOf(side,i)});
     });
   });
+
+  // Asteikko sovitetaan syvimpään vetoon ja pohjaan ennen piirtoa.
+  const syvinTakila = takilat.reduce((m,tk)=>Math.max(m, solveTakila(tk, speed).depth), 0);
+  paivitaAsteikko(Math.max(items.reduce((m,it)=>Math.max(m, it.s.depth), 0), syvinTakila));
+  if(bottomD > MAXD) paivitaAsteikko(bottomD);
 
   const bottomY = SURF + Math.min(MAXD, bottomD)*PXM;
   let g = '';
 
   // syvyysviivat
-  for(let d=2; d<=MAXD; d+=2){
+  const dStep = MAXD > 20 ? 5 : 2;
+  for(let d=dStep; d<=MAXD; d+=dStep){
     const y = SURF + d*PXM;
     g += `<line x1="${X0}" y1="${y}" x2="${X1}" y2="${y}" stroke="#12303f" stroke-width="1"/>
           <text x="${X0+4}" y="${y-5}" font-size="13" fill="#5d7482">${d} m</text>`;
@@ -541,6 +837,33 @@ function drawProfile(){
     g += `<path d="M${X0},${bottomY+6} Q${X0+120},${bottomY-9} ${X0+250},${bottomY+2} T${X1},${bottomY-3} L${X1},${VH} L${X0},${VH} Z"
             fill="#0a2129" stroke="#2a5164" stroke-width="1.5"/>`;
   }
+
+  // takilat: vaijeri, kuula ja vapauttajat
+  const YMAXT = SURF + MAXD*PXM;
+  takilat.forEach((tak,ti)=>{
+    const tk = solveTakila(tak, speed);
+    const vari = TAKILA_VARIT[ti % TAKILA_VARIT.length];
+    const tx = X1 - 4 - ti*3;                     // takilat ovat perässä, vieretysten
+    const kx = tx - tk.run*PXM, ky = SURF + tk.depth*PXM;
+    g += `<polyline points="${tk.pts.map(p=>{
+            const X = Math.max(X0-2, tx - (tk.run - p[0])*PXM);
+            const Y = Math.min(YMAXT, SURF + (tk.depth - p[1])*PXM);
+            return X.toFixed(1)+','+Y.toFixed(1);
+          }).join(' ')}" fill="none" stroke="${vari}" stroke-width="2.2" stroke-opacity=".75"/>`;
+    // vapauttajat ja niiden uistimet
+    tak.uistimet.forEach((u,ui)=>{
+      const off = ui * (tak.vali || TAKILA_VALI_FT);
+      const vp = takilaVapauttaja(tk, off);
+      const vx = tx - vp.run*PXM, vy = SURF + vp.depth*PXM;
+      if(vy > YMAXT || vx < X0) return;
+      if(ui > 0) g += vapauttajaIcon(vx, vy, vari);
+      const lu = u.lureId ? lureById(u.lureId) : null;
+      if(lu) g += lureIcon(vx - 16, vy, 0, vari, lu.type);
+      g += `<text x="${vx + 10}" y="${vy + 4}" font-size="13" font-weight="700" fill="${vari}">${fmt(vp.depth)} m</text>`;
+    });
+    if(ky <= YMAXT && kx >= X0) g += takilaIcon(kx, ky, vari);
+    else g += `<text x="${Math.max(X0+40,kx)}" y="${YMAXT-6}" text-anchor="middle" font-size="14" font-weight="700" fill="${vari}">▼ ${fmt(tk.depth)} m</text>`;
+  });
 
   // siimat
   items.forEach(it=>{
@@ -567,7 +890,8 @@ function drawProfile(){
     if(deepOff){
       g += `<text x="${Math.max(X0+40,lx)}" y="${lyc+4}" text-anchor="middle" font-size="15" font-weight="700" fill="${it.color}">▼ ${fmt(it.s.depth)} m</text>`;
     }else if(!clipped){
-      g += lureIcon(lx, ly, 0, it.color, it.lure.type);
+      g += it.rod.diver ? diverIcon(lx, ly, it.color)
+                        : lureIcon(lx, ly, 0, it.color, it.lure.type);
       g += `<text x="${lx}" y="${ly-11}" text-anchor="middle" font-size="15" font-weight="700" fill="${it.color}">${fmt(it.s.depth)} m</text>`;
     }else{
       g += `<text x="${X0+34}" y="${ly-8}" font-size="14" font-weight="700" fill="${it.color}">◀ ${fmt(it.s.depth)} m</text>`;
@@ -592,7 +916,9 @@ function drawProfile(){
 
   document.getElementById('profile').innerHTML = svg;
 
-  const deepest = items.reduce((m,it)=>Math.max(m,it.s.depth), 0);
+  const deepest = Math.max(
+    items.reduce((m,it)=>Math.max(m,it.s.depth), 0),
+    takilat.reduce((m,tk)=>Math.max(m, solveTakila(tk, speed).depth), 0));
   document.getElementById('roDeep').textContent = fmt(deepest);
   document.getElementById('roSpeed').textContent = fmt(speed);
   document.getElementById('roBottom').textContent = bottomD>0 ? fmt(bottomD) : '–';
@@ -612,13 +938,66 @@ function renderRods(items){
       return `<div class="rod ${deep?'deep':''}" style="border-left-color:${it.color}">
         <button class="x" onclick="delRod('${side}',${it.i})" aria-label="Poista">✕</button>
         <div class="nm">${it.lure.name}</div>
-        <div class="pm">${it.rod.ft} ft · ${it.rod.w} g · ⌀${fmt(it.rod.dia,2)} · ${Math.round(it.s.run)} m perässä</div>
+        <div class="pm">${it.rod.ft} ft · ${it.rod.diver
+            ? 'Dipsy '+it.rod.dSetting+' · '+(it.rod.dLineType==='kuitu'?'kuitu':'mono')
+            : it.rod.w+' g'} · ⌀${fmt(it.rod.dia,2)} · ${Math.round(it.s.run)} m perässä${
+            it.rod.diver ? ' (myös sivulle)' : ''}</div>
         <div class="dp" style="color:${it.color}">${fmt(it.s.depth)} m</div>
         ${deep?'<div class="alert">Pohjan tuntumassa</div>':''}
       </div>`;
     }).join('');
   });
 }
+function renderTakilat(){
+  const box = document.getElementById('takilaLista');
+  if(!box) return;
+  box.innerHTML = takilat.map((tak,i)=>{
+    const tk = solveTakila(tak, speed);
+    const vari = TAKILA_VARIT[i % TAKILA_VARIT.length];
+    const rivit = tak.uistimet.map((u,ui)=>{
+      const vp = takilaVapauttaja(tk, ui*(tak.vali||TAKILA_VALI_FT));
+      const nimi = u.lureId ? lureById(u.lureId).name : 'ei uistinta';
+      return `<div style="display:flex;justify-content:space-between;gap:8px;font-size:11px;color:var(--ink-faint);padding:2px 0">
+        <span>${ui===0?'kuulassa':(ui*(tak.vali||TAKILA_VALI_FT))+' ft ylempänä'} · ${nimi}</span>
+        <b style="color:${vari}">${fmt(vp.depth)} m</b></div>`;
+    }).join('');
+    return `<div class="row" style="display:block">
+      <div style="display:flex;justify-content:space-between;align-items:center;gap:8px">
+        <div class="lb" style="color:${vari}">Takila ${i+1}</div>
+        <div class="num">
+          <input type="number" value="${tak.ft}" step="10" min="0" style="width:64px"
+                 oninput="setTakila(${i},'ft',this.value)"><span>ft</span>
+          <input type="number" value="${tak.kg}" step="0.5" min="1" style="width:56px"
+                 oninput="setTakila(${i},'kg',this.value)"><span>kg</span>
+        </div>
+      </div>
+      <div style="display:flex;gap:6px;margin:6px 0">
+        ${[1,2,3].map(n=>`<button class="pill ${tak.uistimet.length===n?'on':''}"
+           style="padding:4px 10px;font-size:12px" onclick="setUistimia(${i},${n})">${n} uistin${n>1?'ta':''}</button>`).join('')}
+        <span style="font-size:11px;color:var(--ink-faint);align-self:center">väli
+          <input type="number" value="${tak.vali}" step="5" min="5" style="width:48px;background:var(--sea-900);border:1px solid var(--line);color:var(--ink);border-radius:5px;padding:3px 5px;text-align:right"
+                 oninput="setTakila(${i},'vali',this.value)"> ft</span>
+      </div>
+      ${rivit}
+      <div style="font-size:10.5px;color:var(--ink-faint);margin-top:4px">
+        blowback ${(tk.blowback*100).toFixed(0)} % · kuula ${Math.round(tk.run)} m perässä</div>
+    </div>`;
+  }).join('');
+}
+function setTakila(i,k,v){
+  const n = parseFloat(v);
+  if(!isNaN(n)) takilat[i][k] = n;
+  renderAll();
+}
+function setUistimia(i,n){
+  const cur = takilat[i].uistimet;
+  while(cur.length < n) cur.push({lureId: lures[0] ? lures[0].id : null});
+  while(cur.length > n) cur.pop();
+  renderAll();
+}
+function lisaaTakila(){ if(takilat.length < 6){ takilat.push(oletusTakila()); renderAll(); } }
+function poistaTakila(){ if(takilat.length > 2){ takilat.pop(); renderAll(); } }
+
 function renderLures(){
   document.getElementById('lureList').innerHTML = lures.map((l,i)=>`
     <div class="row"><div><div class="lb">${l.name}</div>
@@ -626,7 +1005,7 @@ function renderLures(){
       <div class="num"><button class="btn sm ghost" onclick="openLureSheet(${i})">Muokkaa</button>
       <button class="btn sm ghost" style="color:var(--port)" onclick="delLure(${i})">Poista</button></div></div>`).join('');
 }
-function renderAll(){ const items = drawProfile(); renderRods(items); renderLures(); renderCalcLures(); renderCalibLures(); runCalc(); saveAll(); }
+function renderAll(){ const items = drawProfile(); renderRods(items); renderTakilat(); renderLures(); renderCalcLures(); renderCalibLures(); runCalc(); saveAll(); }
 
 /* ============================================================
    5. VUOROVAIKUTUS
@@ -655,10 +1034,27 @@ function openRodSheet(side){
   document.getElementById('rodLures').innerHTML = lures.map(l=>`<button class="pill" data-id="${l.id}" onclick="pickLure('${l.id}')">${l.name}</button>`).join('');
   document.getElementById('rodFtPills').innerHTML = [30,50,75,100,130,160].map(f=>`<button class="pill" onclick="setNum('rodFt',${f})">${f} ft</button>`).join('');
   document.getElementById('rodWPills').innerHTML = [0,20,40,60,80,120].map(w=>`<button class="pill" onclick="setNum('rodW',${w})">${w} g</button>`).join('');
+  sheetDiver = false; sheetDSetting = 0; sheetDLine = 'mono';
+  document.getElementById('rodDiverPills').innerHTML =
+    `<button class="pill" data-d="off" onclick="setDiver(false)">Ei diveriä</button>` +
+    [0,1,2,3].map(s=>`<button class="pill" data-d="${s}" onclick="setDiver(true,${s})">Asetus ${s}</button>`).join('');
+  document.getElementById('rodDiverLine').innerHTML =
+    ['mono','kuitu'].map(t=>`<button class="pill" data-l="${t}" onclick="setDiverLine('${t}')">${t==='kuitu'?'Kuitu':'Mono'}</button>`).join('');
   syncRodSheet();
   document.getElementById('rodSheet').classList.add('on');
 }
 function pickLure(id){ sheetLure = id; syncRodSheet(); }
+let sheetDiver = false, sheetDSetting = 0, sheetDLine = 'mono';
+function setDiver(on, s){
+  sheetDiver = on; if(on && s!==undefined) sheetDSetting = s;
+  // Diveri ja lyijypaino ovat vaihtoehtoisia: diveri tuottaa oman sukelluksensa.
+  document.getElementById('rodWeightCard').style.display = on ? 'none' : '';
+  document.getElementById('rodDiverLine').style.display = on ? 'flex' : 'none';
+  document.getElementById('rodDiverHint').style.display = on ? 'block' : 'none';
+  if(on) document.getElementById('rodW').value = 0;
+  syncRodSheet();
+}
+function setDiverLine(t){ sheetDLine = t; syncRodSheet(); }
 function setNum(id,v){ document.getElementById(id).value = v; syncRodSheet(); }
 function syncRodSheet(){
   const ft = parseFloat(document.getElementById('rodFt').value)||0;
@@ -667,15 +1063,24 @@ function syncRodSheet(){
   document.querySelectorAll('#rodLures .pill').forEach(p=>p.classList.toggle('on', p.dataset.id===sheetLure));
   document.querySelectorAll('#rodFtPills .pill').forEach(p=>p.classList.toggle('on', parseFloat(p.textContent)===ft));
   document.querySelectorAll('#rodWPills .pill').forEach(p=>p.classList.toggle('on', parseFloat(p.textContent)===w));
-  const s = solve(lureById(sheetLure), ft, w, d, speed);
+  document.querySelectorAll('#rodDiverPills .pill').forEach(p=>{
+    p.classList.toggle('on', sheetDiver ? p.dataset.d===String(sheetDSetting) : p.dataset.d==='off');
+  });
+  document.querySelectorAll('#rodDiverLine .pill').forEach(p=>p.classList.toggle('on', p.dataset.l===sheetDLine));
+  const s = sheetDiver
+    ? solveDiver({ft:ft, dia:d, dSetting:sheetDSetting, dLineType:sheetDLine}, speed)
+    : solve(lureById(sheetLure), ft, w, d, speed);
   document.getElementById('rodPreview').textContent = fmt(s.depth);
 }
 function commitRod(){
   rods[sheetSide].push({
     lureId: sheetLure,
     ft: parseFloat(document.getElementById('rodFt').value)||0,
-    w:  parseFloat(document.getElementById('rodW').value)||0,
-    dia:parseFloat(document.getElementById('rodDia').value)||0.30
+    w:  sheetDiver ? 0 : (parseFloat(document.getElementById('rodW').value)||0),
+    dia:parseFloat(document.getElementById('rodDia').value)||0.30,
+    diver: sheetDiver,
+    dSetting: sheetDSetting,
+    dLineType: sheetDLine
   });
   closeSheets(); renderAll();
 }
@@ -736,8 +1141,12 @@ function runCalc(){
   const w  = parseFloat(document.getElementById('calcW').value)||0;
   const s  = parseFloat(document.getElementById('calcS').value)||0;
   const lure = lureById(calcLureId);
+  const dv = document.getElementById('calcDiver').value;
+  const onDiver = dv !== '';
+  document.getElementById('calcWRow').style.display = onDiver ? 'none' : '';
   document.getElementById('calcM').textContent = '= '+fmt(ft*FT)+' m';
-  const r = solve(lure, ft, w, d, s);
+  const r = onDiver ? solveDiver({ft:ft, dia:d, dSetting:parseInt(dv,10), dLineType:'mono'}, s)
+                    : solve(lure, ft, w, d, s);
   document.getElementById('calcDepth').textContent = fmt(r.depth);
   document.getElementById('calcMeta').textContent = `${Math.round(r.run)} m veneen perässä · siima ${Math.round(r.angle)}° pinnasta`;
 
@@ -745,7 +1154,8 @@ function runCalc(){
   let html = '<tr><th>ft</th>'+speeds.map(v=>`<th>${fmt(v)}</th>`).join('')+'</tr>';
   lens.forEach(L=>{
     html += `<tr><td>${L}</td>` + speeds.map(v=>{
-      const dep = solve(lure, L, w, d, v).depth;
+      const dep = onDiver ? solveDiver({ft:L, dia:d, dSetting:parseInt(dv,10), dLineType:'mono'}, v).depth
+                          : solve(lure, L, w, d, v).depth;
       const hot = bottomD>0 && dep>bottomD-0.3;
       return `<td style="${hot?'color:var(--warn)':''}">${fmt(dep)}</td>`;
     }).join('') + '</tr>';
@@ -834,7 +1244,7 @@ function collect(){
   const items = [];
   ['left','right'].forEach(side=> rods[side].forEach((rod,i)=>{
     const lure = lureById(rod.lureId);
-    items.push({side:side,i:i,rod:rod,lure:lure,s:solve(lure,rod.ft,rod.w,rod.dia,speed),color:colorOf(side,i)});
+    items.push({side:side,i:i,rod:rod,lure:lure,s:solveRod(rod,speed),color:colorOf(side,i)});
   }));
   return items;
 }
