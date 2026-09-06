@@ -122,7 +122,7 @@ nav button.on{color:var(--sky)}
 <body>
 
 <header>
-  <div class="brand">Trolling<em>Pro</em> 2 <span style="font-size:10px;color:var(--ink-faint);font-weight:400">v2.6</span></div>
+  <div class="brand">Trolling<em>Pro</em> 2 <span style="font-size:10px;color:var(--ink-faint);font-weight:400">v2.7</span></div>
   <div id="gpsChip" class="chip">GPS pois</div>
 </header>
 
@@ -601,13 +601,18 @@ function solveTakila(tak, speedKmH){
 /* Vapauttajan sijainti vaijerilla, kun se on offsetFt jalkaa kuulasta ylöspäin.
    pts[0] on kuula, viimeinen on veneen kärki — sama järjestys kuin muualla. */
 function takilaVapauttaja(tk, offsetFt){
-  const off = Math.max(0, offsetFt)*FT;
-  if(off <= 0 || tk.L <= 0) return { depth:tk.depth, run:tk.run };
+  // Vapauttaja ei voi olla vaijeria ylempänä. Aiemmin 20 ft väli 20 ft vaijerilla
+  // antoi 0,0 m eli pinnan — se näytti laskennalta vaikka oli mahdoton asetus.
+  // Rajataan viimeistä metriä ennen pintaa, ja kerrotaan siitä käyttöliittymässä.
+  const maxOff = Math.max(0, tk.L/FT - 3);
+  const yli = offsetFt > maxOff;
+  const off = Math.max(0, Math.min(offsetFt, maxOff))*FT;
+  if(off <= 0 || tk.L <= 0) return { depth:tk.depth, run:tk.run, yli:yli };
   const askel = tk.L / Math.max(1, tk.pts.length - 1);
   const i = Math.min(tk.pts.length - 1, Math.round(off/askel));
   const p = tk.pts[i];
   // pts on mitattu kuulasta ylöspäin: p[1] = nousu kuulasta, p[0] = siirtymä eteen.
-  return { depth: Math.max(0, tk.depth - p[1]), run: Math.max(0, tk.run - p[0]) };
+  return { depth: Math.max(0, tk.depth - p[1]), run: Math.max(0, tk.run - p[0]), yli:yli };
 }
 
 /* UISTIMEN PAIKKA VAPAUTTAJAN TAKANA — lisätty 5.9.2026.
@@ -954,6 +959,10 @@ function drawProfile(){
       g += `<text x="${mx.toFixed(1)}" y="${(my - 20).toFixed(1)}" text-anchor="middle"
               font-size="13" font-weight="700" fill="var(--warn)">${par.risteaa ? 'siimat ristissä' : 'takku'}</text>`;
     });
+    if(bottomD > 0 && tk.depth > bottomD && ky <= YMAXT && kx >= X0){
+      g += `<circle cx="${kx.toFixed(1)}" cy="${ky.toFixed(1)}" r="13" fill="none"
+              stroke="var(--port)" stroke-width="2.2" opacity=".9"/>`;
+    }
     if(ky <= YMAXT && kx >= X0) g += takilaIcon(kx, ky, vari);
     else g += `<text x="${Math.max(X0+40,kx)}" y="${YMAXT-6}" text-anchor="middle" font-size="14" font-weight="700" fill="${vari}">▼ ${fmt(tk.depth)} m</text>`;
   });
@@ -1059,7 +1068,7 @@ function renderTakilat(){
       const takussa = takut.some(t2=>t2.a===ui||t2.b===ui);
       return `<div style="padding:4px 0;border-top:1px solid var(--line-soft)">
         <div style="display:flex;justify-content:space-between;gap:6px;align-items:center">
-          <span style="font-size:11px;color:var(--ink-faint)">${ui===0?'kuulassa':(ui*(tak.vali||TAKILA_VALI_FT))+' ft ylempänä'} · vapautus ${fmt(vp.depth)} m</span>
+          <span style="font-size:11px;color:${vp.yli?'var(--warn)':'var(--ink-faint)'}">${ui===0?'kuulassa':(ui*(tak.vali||TAKILA_VALI_FT))+' ft ylempänä'} · vapautus ${fmt(vp.depth)} m${vp.yli?' — ei mahdu vaijerille':''}</span>
           <b style="color:${takussa?'var(--warn)':vari};font-size:15px">${fmt(pk.depth)} m</b>
         </div>
         <div style="display:flex;gap:6px;align-items:center;margin-top:3px">
@@ -1098,9 +1107,26 @@ function renderTakilat(){
       ${rivit}
       <div style="font-size:10.5px;color:var(--ink-faint);margin-top:4px">
         blowback ${(tk.blowback*100).toFixed(0)} % · kuula ${Math.round(tk.run)} m perässä</div>
+      ${pohjaVaroitus(tk)}
     </div>`;
   }).join('');
 }
+/* POHJAVAROITUS — lisätty 5.9.2026.
+   Vavoilla oli jo "Pohjan tuntumassa", takiloilla ei. Se on väärä järjestys:
+   viehe irtoaa pohjasta, mutta 5 kg kuula jää kiinni ja vie vaijerin mukanaan.
+   Kolme tasoa, koska ero on olennainen: alle pohjan on jo tapahtunut, tuntumassa
+   on varoitus, ja loput on kunnossa. */
+function pohjaVaroitus(tk){
+  if(!(bottomD > 0)) return '';
+  if(tk.depth > bottomD)
+    return `<div style="font-size:11px;color:var(--port);margin-top:3px;font-weight:600">
+      ⚠ Kuula ${fmt(tk.depth - bottomD)} m pohjan ALAPUOLELLA — nosta vaijeria</div>`;
+  if(tk.depth > bottomD - 1.0)
+    return `<div style="font-size:10.5px;color:var(--warn);margin-top:3px">
+      Kuula pohjan tuntumassa (${fmt(bottomD - tk.depth)} m pohjasta)</div>`;
+  return '';
+}
+
 function setUistin(i,ui,id){ takilat[i].uistimet[ui].lureId = id || null; renderAll(); }
 function setVapautus(i,ui,v){
   const n = parseFloat(v);
