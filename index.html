@@ -122,7 +122,7 @@ nav button.on{color:var(--sky)}
 <body>
 
 <header>
-  <div class="brand">Trolling<em>Pro</em> 2 <span style="font-size:10px;color:var(--ink-faint);font-weight:400">v3.3</span></div>
+  <div class="brand">Trolling<em>Pro</em> 2 <span style="font-size:10px;color:var(--ink-faint);font-weight:400">v3.4</span></div>
   <div id="gpsChip" class="chip">GPS pois</div>
 </header>
 
@@ -137,6 +137,10 @@ nav button.on{color:var(--sky)}
           <button class="pill" data-n="ylhaalta" onclick="vaihdaNakyma('ylhaalta')" style="padding:4px 10px;font-size:12px">Ylhäältä</button>
           <button class="pill" data-n="kala" onclick="vaihdaNakyma('kala')" style="padding:4px 10px;font-size:12px">Kalan silmin</button>
           <button class="pill" id="kalaPuoliNappi" onclick="vaihdaKalanPuoli()" style="padding:4px 10px;font-size:12px;display:none">⇄ puoli</button>
+          <span id="kaarrosNapit" style="display:none;gap:4px">
+            <button class="pill" data-k="vasen" onclick="vaihdaKaarros('vasen')" style="padding:4px 9px;font-size:12px">↰</button>
+            <button class="pill" data-k="oikea" onclick="vaihdaKaarros('oikea')" style="padding:4px 9px;font-size:12px">↱</button>
+          </span>
         </div>
         <span id="nakymaSelite">Mittakaava 1:1</span>
       </div>
@@ -1212,8 +1216,98 @@ function vaihdaKalanPuoli(){
   renderAll();
 }
 
+/* ============================================================
+   KAARROS
+   ============================================================
+   Lisätty 5.9.2026.
+
+   MIKÄ RATKAISEE: kaarteessa jokainen viehe kulkee omalla säteellään.
+   Kääntökeskiötä lähin piste kulkee hitaimmin — ja se on KAARTEEN
+   SISÄPUOLEN ULOIN uistin, koska sen sivuttaisetäisyys keskiöön päin on suurin.
+
+     säde_uistin = R - d        (sisäpuoli, d = sivuttaisetäisyys keskiöön päin)
+     nopeus      = v * säde_uistin / R
+
+   SITOVA EHTO (käyttäjän oma): sisin ei saa hidastua alle 0,5 km/h.
+   Siitä ratkeaa jyrkin sallittu säde:
+
+     v*(R - d)/R >= 0,5   =>   R >= d*v / (v - 0,5)
+
+   TAVOITE, ei ehto: uloin pysyisi vieheen ylärajan sisällä. Sitä ei voi aina
+   täyttää — käyttäjän sanoin "kääntyä on nopeudet on mitä on, mutta tavoite on
+   että kaikki pyytäisi". Siksi se raportoidaan, ei rajoiteta.
+
+   VIEHEEN SYVYYS MUUTTUU nopeuden mukana: hitaampi uistin nousee, nopeampi
+   painuu. Se lasketaan samoilla solve()- ja solveDiver()-funktioilla kuin
+   suoralla vedolla — vain nopeus vaihtuu. */
+const KAARROS_MIN_NOPEUS = 0.5;   // km/h, sisimmän alaraja
+
+/* Kaikkien vieheiden sivuttaisetäisyydet keskilinjasta.
+   Palauttaa + oikealle, − vasemmalle. */
+function kaarrosSivuttaiset(){
+  const ulos = [];
+  ['left','right'].forEach(side=>{
+    rods[side].forEach((rod,i)=>{
+      const p = vavanSijainti(side, rod, i);
+      ulos.push({ x:p.x, side:side, rod:rod, i:i,
+                  nimi:lureById(rod.lureId).name, vari:colorOf(side,i) });
+    });
+  });
+  const sij = takilaSijainnit(takilat.length);
+  takilat.forEach((tak,ti)=>{
+    const p = sij[ti] || {x:0,y:0};
+    ulos.push({ x:p.x, takila:ti, nimi:'Takila '+(ti+1),
+                vari:TAKILA_VARIT[ti % TAKILA_VARIT.length] });
+  });
+  return ulos;
+}
+
+/* Jyrkin säde jolla sisin viehe pysyy vielä liikkeessä.
+   suunta: 'vasen' tai 'oikea'. */
+function kaarrosJyrkinSade(suunta, v){
+  if(!(v > KAARROS_MIN_NOPEUS)) return null;   // ei voi kääntää jos jo liian hidas
+  const kaikki = kaarrosSivuttaiset();
+  if(kaikki.length === 0) return null;
+  // Sisäpuoli: vasempaan käännettäessä negatiiviset x ovat sisällä.
+  const merkki = (suunta === 'vasen') ? -1 : 1;
+  const sisimmat = kaikki.map(k => merkki*k.x).filter(d => d > 0);
+  const d = sisimmat.length ? Math.max(...sisimmat) : 0;
+  if(d <= 0) return { sade: 0, rajoittava: null };   // ei mitään sisäpuolella
+  const R = d*v/(v - KAARROS_MIN_NOPEUS);
+  const raj = kaikki.find(k => Math.abs(merkki*k.x - d) < 1e-6);
+  return { sade: R, rajoittava: raj, etaisyys: d };
+}
+
+/* Jokaisen vieheen nopeus ja syvyys annetulla kääntösäteellä. */
+function kaarrosVaikutus(suunta, v, R){
+  const merkki = (suunta === 'vasen') ? -1 : 1;
+  return kaarrosSivuttaiset().map(k=>{
+    const d = merkki*k.x;                       // + = sisäpuolella
+    const sade = Math.max(0, R - d);
+    const nopeus = (R > 0) ? v*sade/R : v;
+    let syvyys = null;
+    try {
+      if(k.takila !== undefined) syvyys = solveTakila(takilat[k.takila], nopeus).depth;
+      else syvyys = solveRod(k.rod, nopeus).depth;
+    } catch(e) { /* syvyys jää tuntemattomaksi */ }
+    return { ...k, nopeus:nopeus, syvyys:syvyys, sisapuolella:(d > 0) };
+  });
+}
+
+/* Kaarros: null = suora veto, 'vasen' tai 'oikea' = näytä jyrkin kaarre. */
+let kaarrosSuunta = null;
+function vaihdaKaarros(s){
+  kaarrosSuunta = (kaarrosSuunta === s) ? null : s;
+  document.querySelectorAll('#kaarrosNapit .pill').forEach(p=>
+    p.classList.toggle('on', p.dataset.k === kaarrosSuunta));
+  renderAll();
+}
+
 function drawTop(){
   const K = [];    // kaikki kohteet: {x, y, syvyys, vari, nimi, tapa}
+  const kr0 = kaarrosSuunta ? kaarrosJyrkinSade(kaarrosSuunta, speed) : null;
+  const kaarrosArvot = (kr0 && kr0.sade > 0)
+    ? kaarrosVaikutus(kaarrosSuunta, speed, kr0.sade) : null;
 
   // Vavat: kärjestä taaksepäin. y on negatiivinen = veneen takana.
   ['left','right'].forEach(side=>{
@@ -1321,8 +1415,47 @@ function drawTop(){
     } else {
       g += `<circle cx="${lx.toFixed(1)}" cy="${ly.toFixed(1)}" r="4" fill="${k.vari}" stroke="#04121a" stroke-width="1"/>`;
     }
-    g += `<text x="${(lx+7).toFixed(1)}" y="${(ly+4).toFixed(1)}" font-size="12" font-weight="700" fill="${k.vari}">${fmt(k.syvyys)}</text>`;
+    // Kaarroksessa näytetään syvyys JA nopeus, koska molemmat muuttuvat.
+    const kv = kaarrosArvot ? kaarrosArvot.find(x=>Math.abs(x.x-k.kiinnitysX)<0.01) : null;
+    if(kv){
+      const hidas = kv.nopeus < 1.5;
+      g += `<text x="${(lx+7).toFixed(1)}" y="${(ly+1).toFixed(1)}" font-size="12" font-weight="700"
+              fill="${hidas?'var(--warn)':k.vari}">${fmt(kv.syvyys !== null ? kv.syvyys : k.syvyys)}</text>`;
+      g += `<text x="${(lx+7).toFixed(1)}" y="${(ly+13).toFixed(1)}" font-size="10"
+              fill="${hidas?'var(--warn)':'#7e93a8'}">${fmt(kv.nopeus)} km/h</text>`;
+    } else {
+      g += `<text x="${(lx+7).toFixed(1)}" y="${(ly+4).toFixed(1)}" font-size="12" font-weight="700" fill="${k.vari}">${fmt(k.syvyys)}</text>`;
+    }
   });
+
+  // KAARROS: jyrkin sallittu kaarre veneen eteen
+  if(kaarrosSuunta){
+    const kr = kaarrosJyrkinSade(kaarrosSuunta, speed);
+    if(kr && kr.sade > 0){
+      const m = (kaarrosSuunta === 'vasen') ? -1 : 1;
+      const R = kr.sade;
+      // Kaari veneen keulasta, keskiö sivulla säteen päässä.
+      const cx = m*R, cy = 2.6;
+      let d2 = '';
+      for(let a2 = 0; a2 <= 70; a2 += 5){
+        const rad = m*a2*Math.PI/180;
+        const px = cx - m*R*Math.cos(rad), py = cy + R*Math.sin(rad);
+        d2 += (a2===0 ? 'M' : 'L') + X(px).toFixed(1) + ',' + Y(py).toFixed(1) + ' ';
+      }
+      g += `<path d="${d2}" fill="none" stroke="#7ed0f0" stroke-width="2"
+              stroke-dasharray="7 5" opacity=".85"/>`;
+      g += `<text x="${X(m*R*0.35)}" y="${Y(R*0.55)}" text-anchor="middle" font-size="12"
+              font-weight="700" fill="#7ed0f0">säde ${fmt(R)} m</text>`;
+      // Rajoittava viehe korostetaan
+      if(kr.rajoittava){
+        const rx = X(kr.rajoittava.x), ry = Y(-kr.etaisyys*PLAANARI_TAKA);
+        g += `<circle cx="${rx.toFixed(1)}" cy="${ry.toFixed(1)}" r="12" fill="none"
+                stroke="var(--warn)" stroke-width="2" stroke-dasharray="3 3"/>`;
+        g += `<text x="${rx.toFixed(1)}" y="${(ry-17).toFixed(1)}" text-anchor="middle"
+                font-size="11" fill="var(--warn)">0,5 km/h</text>`;
+      }
+    }
+  }
 
   // VENE ylhäältä
   g += `<path d="M${X(0)},${Y(2.6)} L${X(VENE_LAITA)},${Y(1.0)} L${X(VENE_LAITA)},${Y(-2.4)}
@@ -1686,6 +1819,8 @@ function renderLures(){
 function renderAll(){
   const pn = document.getElementById('kalaPuoliNappi');
   if(pn) pn.style.display = (nakyma === 'kala') ? '' : 'none';
+  const kn = document.getElementById('kaarrosNapit');
+  if(kn) kn.style.display = (nakyma === 'ylhaalta') ? 'inline-flex' : 'none';
   const items = (nakyma === 'ylhaalta') ? (drawTop(), collect())
               : (nakyma === 'kala')     ? (drawFish(), collect())
               : drawProfile();
