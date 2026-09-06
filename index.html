@@ -122,7 +122,7 @@ nav button.on{color:var(--sky)}
 <body>
 
 <header>
-  <div class="brand">Trolling<em>Pro</em> 2 <span style="font-size:10px;color:var(--ink-faint);font-weight:400">v3.5</span></div>
+  <div class="brand">Trolling<em>Pro</em> 2 <span style="font-size:10px;color:var(--ink-faint);font-weight:400">v3.6</span></div>
   <div id="gpsChip" class="chip">GPS pois</div>
 </header>
 
@@ -1110,7 +1110,10 @@ function kalaProjektio(kam, p, W, H){
     x: W/2 + polttovali*oikea/syvyysK,
     y: H/2 - polttovali*ylos/syvyysK,
     z: syvyysK,
-    koko: Math.max(2, Math.min(26, polttovali*0.35/syvyysK))
+    // Minimikoko 5 px: kaukainenkin viehe pitää erottua tummalta taustalta.
+    // Aiemmin raja oli 2 px, jolloin 50 metrin päässä oleva viehe oli
+    // käytännössä näkymätön ja koko näkymä näytti tyhjältä.
+    koko: Math.max(5, Math.min(30, polttovali*0.45/syvyysK))
   };
 }
 
@@ -1163,10 +1166,13 @@ function drawFish(){
   const pintaY = pinta ? Math.max(0, Math.min(H, pinta.y)) : H*0.25;
   g += `<rect x="0" y="0" width="${W}" height="${H}" fill="#04121b"/>`;
   g += `<defs><linearGradient id="vesiK" x1="0" y1="0" x2="0" y2="1">
-          <stop offset="0" stop-color="#12435c"/><stop offset="1" stop-color="#03090f"/></linearGradient></defs>`;
+          <stop offset="0" stop-color="#1d6489"/><stop offset="0.45" stop-color="#0d3550"/>
+          <stop offset="1" stop-color="#050f18"/></linearGradient></defs>`;
   g += `<rect x="0" y="${pintaY.toFixed(0)}" width="${W}" height="${(H-pintaY).toFixed(0)}" fill="url(#vesiK)"/>`;
+  // Pinta alhaaltapäin: kirkas kalvo, jota vasten vieheet erottuvat.
+  g += `<rect x="0" y="${Math.max(0,pintaY-14).toFixed(0)}" width="${W}" height="14" fill="#9fdcf5" opacity=".18"/>`;
   g += `<line x1="0" y1="${pintaY.toFixed(0)}" x2="${W}" y2="${pintaY.toFixed(0)}"
-          stroke="#7ed0f0" stroke-width="2" stroke-opacity=".5"/>`;
+          stroke="#bfe9fb" stroke-width="2.5" stroke-opacity=".8"/>`;
 
   // AURINKO: kajastus pinnassa siitä suunnasta josta paistaa
   const au = currentLocation ? aurinkoNyt(currentLocation.lat, currentLocation.lon) : null;
@@ -1203,6 +1209,27 @@ function drawFish(){
     }
   }
 
+  // SYVYYSVIIVAT perspektiivissä: ilman niitä syvyyttä ei voi arvioida,
+  // koska vedessä ei ole mitään mihin verrata.
+  for(let z = 5; z <= 30; z += 5){
+    const a1 = kalaProjektio(kam, {x:-60, y:kam.y+70, z:z}, W, H);
+    const a2b = kalaProjektio(kam, {x: 60, y:kam.y+70, z:z}, W, H);
+    if(!a1 || !a2b) continue;
+    if(a1.y < 0 || a1.y > H) continue;
+    g += `<line x1="0" y1="${a1.y.toFixed(0)}" x2="${W}" y2="${a2b.y.toFixed(0)}"
+            stroke="#1d4a63" stroke-width="1" stroke-opacity=".5"/>`;
+    g += `<text x="8" y="${(a1.y-4).toFixed(0)}" font-size="11" fill="#3f6b83">${z} m</text>`;
+  }
+
+  // VENE edessä siluettina: antaa mittakaavan ja suunnan.
+  const vk = kalaProjektio(kam, {x:0, y:2.6, z:0}, W, H);
+  const vp1 = kalaProjektio(kam, {x:-VENE_LAITA, y:-2.4, z:0}, W, H);
+  const vp2 = kalaProjektio(kam, {x: VENE_LAITA, y:-2.4, z:0}, W, H);
+  if(vk && vp1 && vp2 && vk.y > -50 && vk.y < H+50){
+    g += `<path d="M${vk.x.toFixed(1)},${vk.y.toFixed(1)} L${vp1.x.toFixed(1)},${vp1.y.toFixed(1)}
+            L${vp2.x.toFixed(1)},${vp2.y.toFixed(1)} Z" fill="#1a3648" stroke="#5f8ba3" stroke-width="1.4" opacity=".9"/>`;
+  }
+
   // Kohteet takaa eteen, jotta lähimmät piirtyvät päälle
   const proj = K.map(k=>({ k:k,
       p:kalaProjektio(kam, {x:k.x, y:k.y, z:k.z}, W, H),
@@ -1224,7 +1251,7 @@ function drawFish(){
               fill="${k.vari}" stroke="#04121a" stroke-width="1"/>`;
     } else {
       g += `<ellipse cx="${p.x.toFixed(1)}" cy="${p.y.toFixed(1)}" rx="${r.toFixed(1)}" ry="${(r*0.42).toFixed(1)}"
-              fill="${k.vari}" stroke="#04121a" stroke-width="1"/>`;
+              fill="${k.vari}" stroke="#ffffff" stroke-width="1.2" stroke-opacity=".55"/>`;
     }
     // Raja 2,5 px: kaukainenkin viehe saa lukemansa. Kaarroksessa nopeus on
     // se mitä halutaan nähdä, ja juuri kauimmaiset ovat hitaimpia.
