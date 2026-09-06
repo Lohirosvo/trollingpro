@@ -122,7 +122,7 @@ nav button.on{color:var(--sky)}
 <body>
 
 <header>
-  <div class="brand">Trolling<em>Pro</em> 2 <span style="font-size:10px;color:var(--ink-faint);font-weight:400">v4.4</span></div>
+  <div class="brand">Trolling<em>Pro</em> 2 <span style="font-size:10px;color:var(--ink-faint);font-weight:400">v4.5</span></div>
   <div id="gpsChip" class="chip">GPS pois</div>
 </header>
 
@@ -137,6 +137,11 @@ nav button.on{color:var(--sky)}
           <button class="pill" data-n="ylhaalta" onclick="vaihdaNakyma('ylhaalta')" style="padding:4px 10px;font-size:12px">Ylhäältä</button>
           <button class="pill" data-n="kala" onclick="vaihdaNakyma('kala')" style="padding:4px 10px;font-size:12px">Ylhäältä takaa</button>
           <button class="pill" id="kalaPuoliNappi" onclick="vaihdaKalanPuoli()" style="padding:4px 10px;font-size:12px;display:none">⇄ puoli</button>
+          <span id="zoomNapit" style="display:none;gap:4px;align-items:center">
+            <button class="pill" onclick="vaihdaZoom(-1)" style="padding:4px 11px;font-size:15px;line-height:1">−</button>
+            <span id="zoomTila" style="font-size:12px;color:var(--ink-faint);min-width:38px;text-align:center">100 %</span>
+            <button class="pill" onclick="vaihdaZoom(1)" style="padding:4px 11px;font-size:15px;line-height:1">+</button>
+          </span>
           <span id="kaarrosNapit" style="display:none;gap:4px">
             <button class="pill" data-k="vasen" onclick="vaihdaKaarros('vasen')" style="padding:4px 9px;font-size:12px">↰</button>
             <button class="pill" data-k="oikea" onclick="vaihdaKaarros('oikea')" style="padding:4px 9px;font-size:12px">↱</button>
@@ -1200,7 +1205,10 @@ function drawFish(){
   // jotta kaikki mahtuu mutta mikään ei kutistu turhaan.
   const takaisin = K.length ? Math.min(0, ...K.map(k=>k.y)) : -10;
   const syvin    = K.length ? Math.max(3, ...K.map(k=>k.z)) : 10;
-  const etaisyys = Math.max(22, Math.abs(takaisin) * 0.9 + 14);
+  // ZOOM: kerroin kameran etäisyyteen. Pienempi luku = lähempänä.
+  // Automaattinen etäisyys sovittaa kaluston kuvaan; zoomilla voi tarkentaa
+  // yhteen kohtaan tai vetäytyä kauemmas.
+  const etaisyys = Math.max(22, Math.abs(takaisin) * 0.9 + 14) * linnunZoom;
   const kam = {
     x: linnunPuoli === 'oikea' ? etaisyys*0.42 : -etaisyys*0.42,
     y: takaisin - etaisyys*0.55,
@@ -1308,7 +1316,7 @@ function drawFish(){
 
   const plaanareita = rods.left.filter(r=>r.board).length + rods.right.filter(r=>r.board).length;
   g += `<text x="12" y="${H-14}" font-size="14" fill="#7093a8">Lintuperspektiivi ${
-    linnunPuoli==='oikea'?'tyyrpuurin':'paapuurin'} puolelta`
+    linnunPuoli==='oikea'?'tyyrpuurin':'paapuurin'} puolelta · ${Math.round(etaisyys)} m päästä`
     + (plaanareita ? ` · ${plaanareita} plaanarivapaa ei näy tässä` : '') + `</text>`;
 
   document.getElementById('profile').innerHTML =
@@ -1323,6 +1331,17 @@ function drawFish(){
 
 /* Kalan puoli. Oletus auringon puoli — vieheet näkyvät sieltä vasten valoa. */
 let linnunPuoli = 'oikea';
+let linnunZoom = 1.0;          // 1,0 = automaattinen sovitus
+
+function vaihdaZoom(suunta){
+  // Rajat: 0,45 = hyvin lähellä (yksi takila täyttää kuvan),
+  //        2,2  = koko kalusto kaukaa. Askel 1,25× jotta muutos tuntuu.
+  linnunZoom = Math.max(0.45, Math.min(2.2,
+    suunta > 0 ? linnunZoom / 1.25 : linnunZoom * 1.25));
+  const n = document.getElementById('zoomTila');
+  if(n) n.textContent = Math.round(100 / linnunZoom) + ' %';
+  renderKevyt();
+}
 function paivitaKalanPuoli(){
   const au = aurinkoNyt(sijainti.lat, sijainti.lon);
   if(!au) return;
@@ -1989,6 +2008,8 @@ function renderLures(){
 function renderAll(){
   const pn = document.getElementById('kalaPuoliNappi');
   if(pn) pn.style.display = (nakyma === 'kala') ? '' : 'none';
+  const zn = document.getElementById('zoomNapit');
+  if(zn) zn.style.display = (nakyma === 'kala') ? 'inline-flex' : 'none';
   const kn = document.getElementById('kaarrosNapit');
   if(kn) kn.style.display = (nakyma === 'ylhaalta' || nakyma === 'kala') ? 'inline-flex' : 'none';
   const items = (nakyma === 'ylhaalta') ? (drawTop(), collect())
