@@ -122,7 +122,7 @@ nav button.on{color:var(--sky)}
 <body>
 
 <header>
-  <div class="brand">Trolling<em>Pro</em> 2 <span style="font-size:10px;color:var(--ink-faint);font-weight:400">v3.9</span></div>
+  <div class="brand">Trolling<em>Pro</em> 2 <span style="font-size:10px;color:var(--ink-faint);font-weight:400">v4.0</span></div>
   <div id="gpsChip" class="chip">GPS pois</div>
 </header>
 
@@ -2275,7 +2275,16 @@ function stopGPS(){
    Nyt kerätään havainnot puskuriin ja lasketaan aito keskiarvo 10 sekunnin
    ikkunasta. Kuva päivittyy enintään 10 sekunnin välein — GPS antaa paikan
    sekunnin välein, mutta uistelunopeus ei muutu sekunnissa. */
+/* Kaksi eri aikaa, ja ne ovat eri asioita:
+     IKKUNA  — kuinka pitkältä ajalta keskiarvo lasketaan. 10 s tasoittaa
+               GPS:n heittelyn eikä uistelunopeus muutu sitä nopeammin.
+     PIIRTO  — kuinka usein kuva päivittyy. Ensin 10 s, mutta veneessä
+               (ja pihalla kokeillessa) se tuntuu jumilta: näyttö ei reagoi
+               kääntymiseen ennen kuin ehtii unohtaa mitä teki.
+   Lyhennetty 2 sekuntiin 5.9.2026. Luvut pysyvät silti tasaisina, koska
+   keskiarvon ikkuna ei muuttunut — vain se, kuinka usein sitä katsotaan. */
 const GPS_IKKUNA_MS = 10000;
+const GPS_PIIRTO_MS = 2000;
 let gpsPuskuri = [];
 let gpsViimePiirto = 0;
 
@@ -2379,10 +2388,10 @@ function onFix(pos){
   chip.classList.add('live');
   chip.textContent = 'GPS ' + fmt(speed) + ' km/h · ' + Math.round(viimeisinKurssi) + '°';
 
-  // Kuva enintään 10 s välein. Nopeuslukema päivittyy silti joka kerta,
+  // Kuva enintään 2 s välein. Nopeuslukema päivittyy silti joka kerta,
   // koska se on yksi teksti eikä maksa mitään.
   const nyt = Date.now();
-  if(nyt - gpsViimePiirto >= GPS_IKKUNA_MS){
+  if(nyt - gpsViimePiirto >= GPS_PIIRTO_MS){
     gpsViimePiirto = nyt;
     renderAll();
   } else {
