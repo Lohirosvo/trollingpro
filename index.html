@@ -122,7 +122,7 @@ nav button.on{color:var(--sky)}
 <body>
 
 <header>
-  <div class="brand">Trolling<em>Pro</em> 2 <span style="font-size:10px;color:var(--ink-faint);font-weight:400">v3.6</span></div>
+  <div class="brand">Trolling<em>Pro</em> 2 <span style="font-size:10px;color:var(--ink-faint);font-weight:400">v3.7</span></div>
   <div id="gpsChip" class="chip">GPS pois</div>
 </header>
 
@@ -329,8 +329,48 @@ nav button.on{color:var(--sky)}
   </div>
 </div>
 
+<div id="virheBox" style="display:none;position:fixed;left:8px;right:8px;bottom:78px;z-index:200;
+     background:#3a1216;border:1px solid #ff5f57;border-radius:10px;padding:10px 12px;
+     font-size:12px;line-height:1.45;color:#ffd7d4;max-height:45vh;overflow:auto">
+  <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;margin-bottom:6px">
+    <b style="color:#ff8f8a">Virhe</b>
+    <button onclick="document.getElementById('virheBox').style.display='none'"
+            style="background:none;border:1px solid #ff5f57;color:#ff8f8a;border-radius:6px;padding:2px 8px;font-size:11px">sulje</button>
+  </div>
+  <div id="virheTeksti" style="font-family:monospace;word-break:break-word"></div>
+</div>
+
 <script>
 "use strict";
+
+/* ============================================================
+   VIRHEIDEN NÄYTTÖ RUUDULLA
+   ============================================================
+   Lisätty 5.9.2026. Sovellusta käytetään puhelimella veneessä, eikä siellä
+   ole konsolia. Jos jokin kaatuu, näyttö vain jää päivittymättä eikä kerro
+   syytä — sitä on mahdoton selvittää ilman tietokonetta.
+
+   Nyt virhe näkyy ruudulla: viesti, tiedosto ja rivinumero. Se on rumaa mutta
+   rehellistä, ja se kertoo kerralla mitä kysyä. */
+function naytaVirhe(viesti, lahde, rivi, sarake, virhe){
+  try {
+    const box = document.getElementById('virheBox');
+    const t = document.getElementById('virheTeksti');
+    if(!box || !t) return;
+    const pino = (virhe && virhe.stack) ? String(virhe.stack).split('\n').slice(0,4).join('\n') : '';
+    t.textContent = viesti + (rivi ? ('\nrivi ' + rivi + (sarake ? ':' + sarake : '')) : '')
+      + (pino ? '\n\n' + pino : '');
+    box.style.display = 'block';
+  } catch(e) { /* virheenkäsittely ei saa itse kaatua */ }
+}
+
+window.onerror = function(viesti, lahde, rivi, sarake, virhe){
+  naytaVirhe(String(viesti), lahde, rivi, sarake, virhe);
+  return false;   // ei estetä selaimen omaa käsittelyä
+};
+window.addEventListener('unhandledrejection', function(e){
+  naytaVirhe('Käsittelemätön lupaus: ' + (e.reason && e.reason.message ? e.reason.message : e.reason));
+});
 /* ============================================================
    1. FYSIIKKA
    ============================================================ */
@@ -1566,11 +1606,19 @@ function drawTop(){
 
 let nakyma = 'sivu';
 function vaihdaNakyma(n){
+  const edellinen = nakyma;
   nakyma = n;
-  if(n === 'kala') paivitaKalanPuoli();   // oletus auringon puolelle
-  document.querySelectorAll('#nakymaNapit .pill').forEach(p=>
-    p.classList.toggle('on', p.dataset.n === n));
-  renderAll();
+  try {
+    if(n === 'kala') paivitaKalanPuoli();   // oletus auringon puolelle
+    document.querySelectorAll('#nakymaNapit .pill').forEach(p=>
+      p.classList.toggle('on', p.dataset.n === n));
+    renderAll();
+  } catch(e) {
+    // Näkymä palautetaan, jotta sovellus jää käyttökelpoiseen tilaan.
+    nakyma = edellinen;
+    naytaVirhe('Näkymä "' + n + '" kaatui: ' + e.message, null, null, null, e);
+    try { renderAll(); } catch(e2) { /* jos tämäkin kaatuu, virhe on jo näkyvissä */ }
+  }
 }
 
 function drawProfile(){
