@@ -122,7 +122,7 @@ nav button.on{color:var(--sky)}
 <body>
 
 <header>
-  <div class="brand">Trolling<em>Pro</em> 2 <span style="font-size:10px;color:var(--ink-faint);font-weight:400">v4.6</span></div>
+  <div class="brand">Trolling<em>Pro</em> 2 <span style="font-size:10px;color:var(--ink-faint);font-weight:400">v4.7</span></div>
   <div id="gpsChip" class="chip">GPS pois</div>
 </header>
 
@@ -232,6 +232,26 @@ nav button.on{color:var(--sky)}
 
   <!-- ============ KALUSTO ============ -->
   <section id="tab-kalusto" class="tab">
+    <div class="card">
+      <h3>Kirjasto — tallennetut kattaukset</h3>
+      <div class="pills" id="kirjastoHyllyt">
+        <button class="pill on" data-h="jarvi" onclick="setKirjastoHylly('jarvi')">Järvi</button>
+        <button class="pill" data-h="meri" onclick="setKirjastoHylly('meri')">Meri</button>
+      </div>
+      <div class="row">
+        <div><div class="lb">Paikka</div></div>
+        <div class="num"><select id="kirjastoPaikka"></select></div>
+      </div>
+      <div class="row">
+        <div style="flex:1"><div class="lb">Nimi</div><div class="sub">esim. "kesä, kuha 6 m"</div></div>
+        <div class="num"><input id="kirjastoNimi" type="text" style="width:150px;text-align:left" placeholder=""></div>
+      </div>
+      <div class="row"><button class="btn sm wide go" onclick="kirjastoTallenna()">Tallenna nykyinen kattaus</button></div>
+      <div id="kirjastoLista"></div>
+      <div class="row"><div id="kirjastoTila" class="sub" style="margin:0">Tallentaa vavat, takilat, plaanarin, nopeuden, pohjan ja tavoitteen. Uistinkirjasto ja mallin vakiot eivät kuulu kattaukseen.</div></div>
+      <input type="hidden" id="kirjastoHylly" value="jarvi">
+    </div>
+
     <div class="card">
       <h3>Uistinkirjasto</h3>
       <div id="lureList"></div>
@@ -982,6 +1002,8 @@ function boot(){
   document.getElementById('cfgRefD').value  = CFG.refLineDia;
   document.getElementById('cfgDia').value   = CFG.defDia;
   document.getElementById('cfgFt').value    = CFG.defFt;
+  lataaKirjasto();
+  kirjastoVaihdaHylly('jarvi');
   renderAll();
 }
 const fmt = (n,d)=> n.toFixed(d===undefined?1:d).replace('.', ',');
@@ -1826,10 +1848,36 @@ function drawProfile(){
 /* ============================================================
    4. RENDER
    ============================================================ */
+/* VAPOJEN JÄRJESTYS — lisätty 5.9.2026.
+   Kahdenkymmenenviiden vavan listasta on mahdoton löytää mitään, jos ne ovat
+   lisäysjärjestyksessä. Järjestetään sen sijaan sen mukaan MISSÄ viehe kulkee,
+   keskeltä ulospäin:
+
+     ylin    perävapa (potkurivirta, keskellä)
+             sivuvapa
+             Dipsy
+     alin    plaanari, uloin viimeisenä
+
+   Näin lista vastaa sitä mitä ylänäkymässä näkyy vasemmalta oikealle, ja
+   oikean vavan löytää katsomatta nimiä. */
+function vavanJarjestys(rod){
+  if(rod.keski) return 0;
+  if(rod.diver) return 2;
+  if(rod.board) return 3;
+  return 1;                       // sivuvapa
+}
+
 function renderRods(items){
   ['left','right'].forEach(side=>{
     const box = document.getElementById('rods-'+side);
-    const mine = items.filter(i=>i.side===side);
+    const mine = items.filter(i=>i.side===side).slice().sort((a,b)=>{
+      const ea = vavanJarjestys(a.rod), eb = vavanJarjestys(b.rod);
+      if(ea !== eb) return ea - eb;
+      // Plaanarit: ENSIMMÄISENÄ lisätty on uloin (menee kelkkaan), joten
+      // indeksijärjestys käännetään — sisin ylimmäksi, uloin alimmaksi.
+      if(a.rod.board && b.rod.board) return b.i - a.i;
+      return a.i - b.i;
+    });
     if(!mine.length){ box.innerHTML = '<div class="empty">Ei vapoja vedossa</div>'; return; }
     box.innerHTML = mine.map(it=>{
       const deep = bottomD>0 && it.s.depth > bottomD-0.3;
@@ -2015,7 +2063,7 @@ function renderAll(){
   const items = (nakyma === 'ylhaalta') ? (drawTop(), collect())
               : (nakyma === 'kala')     ? (drawFish(), collect())
               : drawProfile();
-  renderRods(items); renderPlaanarit(); renderTakilat(); renderLures(); renderCalcLures(); renderCalibLures(); runCalc(); saveAll(); }
+  renderRods(items); renderPlaanarit(); renderTakilat(); renderLures(); renderKirjasto(); renderCalcLures(); renderCalibLures(); runCalc(); saveAll(); }
 
 /* ============================================================
    5. VUOROVAIKUTUS
@@ -2335,6 +2383,126 @@ function calibrateFromMeasurement(){
   lipCache.clear();
   out.textContent = `${lure.name}: vetovastus ×${fmt(lure.dragMul,2)} (oli ×${fmt(orig,2)}). Kaikki tämän uistimen luvut päivittyivät.`;
   renderAll();
+}
+
+/* ============================================================
+   KIRJASTO — tallennetut pyyntiasetukset
+   ============================================================
+   Lisätty 5.9.2026. Kahdenkymmenenviiden vavan kattauksen rakentaminen
+   uudelleen joka reissulla on kova homma. Kirjasto tallentaa koko asetelman
+   yhdellä napilla ja palauttaa sen toisella.
+
+   HYLLYT: järvi ja meri. Ne ovat eri kalastusta — järvellä plaanarit ovat
+   lyhyempiä ja takilat matalampia kuin merellä. Paikka valitaan hyllyn omasta
+   listasta, jotta samat nimet toistuvat eikä synny "Lappajärvi" ja "lappajarvi".
+
+   MITÄ TALLENNETAAN: vavat, takilat, plaanarin sisin, nopeus, pohja ja tavoite.
+   EI uistinkirjastoa eikä mallin vakioita — ne ovat kalustoa, eivät kattaus. */
+const KIRJASTO_PAIKAT = {
+  jarvi: ['Yleinen','Lappajärvi','Hirvijärven tekoallas','Kyrkösjärvi',
+          'Ähtärinjärvi','Inarinjärvi','Kivijärvi'],
+  meri:  ['Yleinen','Ahvenanmaa','Pori','Kaskinen','Vaasa','Pietarsaari',
+          'Tankar','Kalajoki']
+};
+let kirjasto = [];
+let kirjastoHylly = 'jarvi';
+
+function lataaKirjasto(){ kirjasto = load('tp2_kirjasto', null) || []; }
+function tallennaKirjasto(){ store('tp2_kirjasto', kirjasto); }
+
+/* Nykyinen kattaus talteen. Syväkopio, jotta myöhemmät muutokset eivät
+   muuta tallennettua. */
+function kaappaaKattaus(){
+  return {
+    rods: JSON.parse(JSON.stringify(rods)),
+    takilat: JSON.parse(JSON.stringify(takilat)),
+    plaanariSisin: JSON.parse(JSON.stringify(plaanariSisin)),
+    speed: speed, bottomD: bottomD, targetD: targetD
+  };
+}
+
+function kirjastoTallenna(){
+  const hylly = document.getElementById('kirjastoHylly').value;
+  const paikka = document.getElementById('kirjastoPaikka').value;
+  const nimi = (document.getElementById('kirjastoNimi').value || '').trim();
+  if(!nimi){
+    document.getElementById('kirjastoTila').textContent = 'Anna kattaukselle nimi.';
+    return;
+  }
+  const vapoja = rods.left.length + rods.right.length;
+  kirjasto.push({
+    id: 'k' + Date.now(), hylly: hylly, paikka: paikka, nimi: nimi,
+    pvm: new Date().toISOString(), vapoja: vapoja, takiloita: takilat.length,
+    data: kaappaaKattaus()
+  });
+  tallennaKirjasto();
+  document.getElementById('kirjastoNimi').value = '';
+  document.getElementById('kirjastoTila').textContent =
+    'Tallennettu: ' + paikka + ' / ' + nimi;
+  renderKirjasto();
+}
+
+function kirjastoAvaa(id){
+  const k = kirjasto.find(x=>x.id===id);
+  if(!k) return;
+  rods = JSON.parse(JSON.stringify(k.data.rods));
+  takilat = JSON.parse(JSON.stringify(k.data.takilat));
+  plaanariSisin = JSON.parse(JSON.stringify(k.data.plaanariSisin));
+  bottomD = k.data.bottomD; targetD = k.data.targetD;
+  if(gpsId === null) speed = k.data.speed;   // GPS voittaa tallennetun nopeuden
+  document.getElementById('bot').value = bottomD;
+  document.getElementById('tgt').value = targetD;
+  document.getElementById('spd').value = speed;
+  document.getElementById('kirjastoTila').textContent = 'Avattu: ' + k.paikka + ' / ' + k.nimi;
+  renderAll();
+}
+
+function kirjastoPoista(id){
+  const k = kirjasto.find(x=>x.id===id);
+  if(!k) return;
+  if(!confirm('Poistetaanko "' + k.nimi + '"?')) return;
+  kirjasto = kirjasto.filter(x=>x.id!==id);
+  tallennaKirjasto();
+  renderKirjasto();
+}
+
+function kirjastoVaihdaHylly(h){
+  kirjastoHylly = h;
+  const sel = document.getElementById('kirjastoPaikka');
+  sel.innerHTML = KIRJASTO_PAIKAT[h].map(p=>`<option value="${p}">${p}</option>`).join('');
+  renderKirjasto();
+}
+
+function setKirjastoHylly(h){
+  document.getElementById('kirjastoHylly').value = h;
+  document.querySelectorAll('#kirjastoHyllyt .pill').forEach(p=>
+    p.classList.toggle('on', p.dataset.h === h));
+  kirjastoVaihdaHylly(h);
+}
+
+function renderKirjasto(){
+  const box = document.getElementById('kirjastoLista');
+  if(!box) return;
+  const omat = kirjasto.filter(k=>k.hylly===kirjastoHylly);
+  if(omat.length === 0){
+    box.innerHTML = '<div class="empty">Ei tallennettuja kattauksia tällä hyllyllä</div>';
+    return;
+  }
+  // Ryhmitellään paikan mukaan, jotta pitkäkin lista pysyy luettavana.
+  const ryhmat = {};
+  omat.forEach(k=>{ (ryhmat[k.paikka] = ryhmat[k.paikka] || []).push(k); });
+  box.innerHTML = Object.keys(ryhmat).sort().map(paikka=>
+    `<div style="padding:6px 0;border-top:1px solid var(--line-soft)">
+      <div style="font-size:11px;color:var(--ink-faint);text-transform:uppercase;letter-spacing:.06em">${paikka}</div>
+      ${ryhmat[paikka].map(k=>`<div style="display:flex;align-items:center;gap:8px;padding:4px 0">
+        <div style="flex:1;min-width:0">
+          <div style="font-size:13px;font-weight:600">${k.nimi}</div>
+          <div style="font-size:10.5px;color:var(--ink-faint)">${k.vapoja} vapaa · ${k.takiloita} takilaa · ${new Date(k.pvm).toLocaleDateString('fi-FI')}</div>
+        </div>
+        <button class="btn sm" onclick="kirjastoAvaa('${k.id}')">Avaa</button>
+        <button class="btn sm ghost" style="color:var(--port)" onclick="kirjastoPoista('${k.id}')">✕</button>
+      </div>`).join('')}
+    </div>`).join('');
 }
 
 /* ============================================================
