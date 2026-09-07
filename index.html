@@ -122,7 +122,7 @@ nav button.on{color:var(--sky)}
 <body>
 
 <header>
-  <div class="brand">Trolling<em>Pro</em> 2 <span style="font-size:10px;color:var(--ink-faint);font-weight:400">v4.5</span></div>
+  <div class="brand">Trolling<em>Pro</em> 2 <span style="font-size:10px;color:var(--ink-faint);font-weight:400">v4.6</span></div>
   <div id="gpsChip" class="chip">GPS pois</div>
 </header>
 
@@ -131,13 +131,13 @@ nav button.on{color:var(--sky)}
   <section id="tab-vedot" class="tab on">
     <div class="stage">
       <div id="profile"></div>
-      <div class="stage-foot" style="justify-content:space-between">
-        <div id="nakymaNapit" style="display:flex;gap:6px">
+      <div class="stage-foot" style="justify-content:space-between; flex-wrap:wrap; row-gap:6px">
+        <div id="nakymaNapit" style="display:flex;gap:6px;flex-wrap:wrap;align-items:center">
           <button class="pill on" data-n="sivu" onclick="vaihdaNakyma('sivu')" style="padding:4px 10px;font-size:12px">Sivulta</button>
           <button class="pill" data-n="ylhaalta" onclick="vaihdaNakyma('ylhaalta')" style="padding:4px 10px;font-size:12px">Ylhäältä</button>
           <button class="pill" data-n="kala" onclick="vaihdaNakyma('kala')" style="padding:4px 10px;font-size:12px">Ylhäältä takaa</button>
           <button class="pill" id="kalaPuoliNappi" onclick="vaihdaKalanPuoli()" style="padding:4px 10px;font-size:12px;display:none">⇄ puoli</button>
-          <span id="zoomNapit" style="display:none;gap:4px;align-items:center">
+          <span id="zoomNapit" style="display:none;gap:4px;align-items:center;margin-right:10px">
             <button class="pill" onclick="vaihdaZoom(-1)" style="padding:4px 11px;font-size:15px;line-height:1">−</button>
             <span id="zoomTila" style="font-size:12px;color:var(--ink-faint);min-width:38px;text-align:center">100 %</span>
             <button class="pill" onclick="vaihdaZoom(1)" style="padding:4px 11px;font-size:15px;line-height:1">+</button>
@@ -304,11 +304,11 @@ nav button.on{color:var(--sky)}
         </div>
         <p class="hint" id="rodDiverHint" style="display:none">Syvyys = siimaa ulkona jaettuna suhdeluvulla. Sama malli kuin uistelututkan laskurissa. Luhr Jensenin taulukkoa ei käytetä, koska se pätee O-rengas paikallaan.</p>
       </div>
-      <div class="card"><h3>Siimaa ulos</h3>
+      <div class="card"><h3>Siimaa ulos (ft)</h3>
         <div id="rodFtPills" class="pills"></div>
         <div class="row"><div class="lb">Tarkka määrä</div><div class="num"><input id="rodFt" type="number" value="100" step="5" min="0" oninput="syncRodSheet()"><span>ft</span></div></div>
       </div>
-      <div class="card" id="rodWeightCard"><h3>Lyijypaino</h3>
+      <div class="card" id="rodWeightCard"><h3>Lyijypaino (g)</h3>
         <div id="rodWPills" class="pills"></div>
         <div class="row"><div class="lb">Tarkka paino</div><div class="num"><input id="rodW" type="number" value="0" step="5" min="0" oninput="syncRodSheet()"><span>g</span></div></div>
       </div>
@@ -2081,8 +2081,8 @@ function openRodSheet(side, idx){
   document.getElementById('rodW').value   = vanha ? vanha.w   : 0;
   document.getElementById('rodDia').value = vanha ? vanha.dia : CFG.defDia;
   document.getElementById('rodLures').innerHTML = lures.map(l=>`<button class="pill" data-id="${l.id}" onclick="pickLure('${l.id}')">${l.name}</button>`).join('');
-  document.getElementById('rodFtPills').innerHTML = [30,50,75,100,130,160].map(f=>`<button class="pill" onclick="setNum('rodFt',${f})">${f} ft</button>`).join('');
-  document.getElementById('rodWPills').innerHTML = [0,20,40,60,80,120].map(w=>`<button class="pill" onclick="setNum('rodW',${w})">${w} g</button>`).join('');
+  document.getElementById('rodFtPills').innerHTML = [10,15,20,25,30,40,50,75,100,150].map(f=>`<button class="pill" onclick="setNum('rodFt',${f})">${f}</button>`).join('');
+  document.getElementById('rodWPills').innerHTML = [0,10,20,30,40,50,60,80,100,120,200].map(w=>`<button class="pill" onclick="setNum('rodW',${w})">${w}</button>`).join('');
   sheetDiver = false; sheetDSetting = 0; sheetDLine = 'mono';
   document.getElementById('rodDiverPills').innerHTML =
     `<button class="pill" data-d="off" onclick="setDiver(false)">Sivuvapa</button>`
@@ -2138,7 +2138,10 @@ function setKeski(){
    selkäsiimassa eikä veneen takana. Siksi ne sulkevat toisensa pois. */
 function setPlaanari(){
   sheetBoard = true; sheetDiver = false; sheetKeski = false;
-  document.getElementById('rodWeightCard').style.display = 'none';
+  // KORJATTU 5.9.2026: painokortti oli piilotettu plaanarilta. Se oli väärin —
+  // selkäsiimaan kiinnitettyyn vieheeseen laitetaan lyijyä aivan kuten muuallekin,
+  // jotta se saadaan halutulle syvyydelle. Vain diveri korvaa painon.
+  document.getElementById('rodWeightCard').style.display = '';
   document.getElementById('rodDiverLine').style.display = 'none';
   document.getElementById('rodPerukeRivi').style.display = 'none';
   document.getElementById('rodDiverHint').style.display = 'block';
@@ -2173,6 +2176,8 @@ function syncRodSheet(){
   document.querySelectorAll('#rodLures .pill').forEach(p=>p.classList.toggle('on', p.dataset.id===sheetLure));
   document.querySelectorAll('#rodFtPills .pill').forEach(p=>p.classList.toggle('on', parseFloat(p.textContent)===ft));
   document.querySelectorAll('#rodWPills .pill').forEach(p=>p.classList.toggle('on', parseFloat(p.textContent)===w));
+  // Yksikkö on otsikossa, joten pillereissä on pelkkä luku — niitä mahtuu
+  // silloin riviin kaksi kertaa enemmän eikä tarvitse vierittää.
   document.querySelectorAll('#rodDiverPills .pill').forEach(p=>{
     const valittu = sheetBoard ? (p.dataset.d === 'board')
                   : sheetKeski ? (p.dataset.d === 'keski')
