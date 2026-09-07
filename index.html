@@ -122,7 +122,7 @@ nav button.on{color:var(--sky)}
 <body>
 
 <header>
-  <div class="brand">Trolling<em>Pro</em> 2 <span style="font-size:10px;color:var(--ink-faint);font-weight:400">v4.7</span></div>
+  <div class="brand">Trolling<em>Pro</em> 2 <span style="font-size:10px;color:var(--ink-faint);font-weight:400">v4.8</span></div>
   <div id="gpsChip" class="chip">GPS pois</div>
 </header>
 
@@ -145,6 +145,7 @@ nav button.on{color:var(--sky)}
           <span id="kaarrosNapit" style="display:none;gap:4px">
             <button class="pill" data-k="vasen" onclick="vaihdaKaarros('vasen')" style="padding:4px 9px;font-size:12px">↰</button>
             <button class="pill" data-k="oikea" onclick="vaihdaKaarros('oikea')" style="padding:4px 9px;font-size:12px">↱</button>
+            <span id="kaarrosSelite" style="font-size:11px;color:var(--ink-faint)"></span>
           </span>
         </div>
         <span id="nakymaSelite">Mittakaava 1:1</span>
@@ -165,9 +166,13 @@ nav button.on{color:var(--sky)}
 
     <div class="bar">
       <label for="bot">Pohja</label>
-      <input id="bot" type="range" min="0" max="12" step="0.5" value="8" oninput="setBottom(this.value)">
+      <input id="bot" type="range" min="1" max="30" step="0.5" value="8" oninput="setBottom(this.value)">
+      <input id="botNum" type="number" min="1" step="1" value="8" style="width:56px"
+             oninput="setBottom(this.value)" title="Kirjoita suurempi lukema käsin">
       <label for="tgt">Tavoite</label>
-      <input id="tgt" type="range" min="0" max="12" step="0.5" value="6" oninput="setTarget(this.value)">
+      <input id="tgt" type="range" min="1" max="30" step="0.5" value="6" oninput="setTarget(this.value)">
+      <input id="tgtNum" type="number" min="1" step="1" value="6" style="width:56px"
+             oninput="setTarget(this.value)">
     </div>
 
     <div class="card" style="margin-top:10px">
@@ -994,6 +999,8 @@ function boot(){
   document.getElementById('spd').value = speed;
   document.getElementById('bot').value = bottomD;
   document.getElementById('tgt').value = targetD;
+  document.getElementById('botNum').value = bottomD;
+  document.getElementById('tgtNum').value = targetD;
   document.getElementById('cfgCalib').value = CFG.calib;
   document.getElementById('cfgCdaW').value  = CFG.cdaWobbler;
   document.getElementById('cfgCdaS').value  = CFG.cdaSpoon;
@@ -1402,6 +1409,25 @@ function vaihdaKalanPuoli(){
    suoralla vedolla — vain nopeus vaihtuu. */
 const KAARROS_MIN_NOPEUS = 0.5;   // km/h, sisimmän alaraja
 
+/* MALLIN TODELLINEN RAJA — kirjattu 5.9.2026 käyttäjän huomion jälkeen.
+
+   Laskenta olettaa että koko kalusto kiertää JÄYKÄSTI kääntökeskiön ympäri,
+   kuin se olisi kiinni puomissa. Lyhyellä siimalla (takila, Dipsy lähellä
+   venettä) se pitää suunnilleen paikkansa. PITKÄLLÄ SIIMALLA EI PIDÄ:
+
+     - viehe ei siirry hetkessä sisäradalle vaan leikkaa kaarteen poikki
+     - sisäkurvin plaanarikelkka menettää vedon ja putoaa taakse sen sijaan
+       että pysyisi asemassaan
+     - siima ei ole jäykkä tanko vaan roikkuu ja kiristyy vasta liikkeen myötä
+
+   Käytännössä sisimmän vieheen todellinen nopeus ei putoa niin alas kuin malli
+   sanoo, mutta kelkan asema romahtaa — mikä on oma ongelmansa. Laskenta kertoo
+   siis MISSÄ RAJA ALKAA LÄHESTYÄ, ei mitä tarkalleen tapahtuu.
+
+   Raja merkitään käyttöliittymään: jos rajoittava viehe on yli 15 m sivulla,
+   varoitetaan että jäykkä oletus ei enää päde. */
+const KAARROS_JAYKKA_RAJA_M = 15;
+
 /* Kaikkien vieheiden sivuttaisetäisyydet keskilinjasta.
    Palauttaa + oikealle, − vasemmalle. */
 function kaarrosSivuttaiset(){
@@ -1458,6 +1484,12 @@ function kaarrosVaikutus(suunta, v, R){
 let kaarrosSuunta = null;
 function vaihdaKaarros(s){
   kaarrosSuunta = (kaarrosSuunta === s) ? null : s;
+  const sel = document.getElementById('kaarrosSelite');
+  if(sel){
+    const kr = kaarrosSuunta ? kaarrosJyrkinSade(kaarrosSuunta, speed) : null;
+    sel.textContent = (kr && kr.sade > 0)
+      ? 'jyrkin ' + fmt(kr.sade) + ' m' : '';
+  }
   document.querySelectorAll('#kaarrosNapit .pill').forEach(p=>
     p.classList.toggle('on', p.dataset.k === kaarrosSuunta));
   renderAll();
@@ -1622,7 +1654,17 @@ function drawTop(){
       g += `<path d="${d2}" fill="none" stroke="#7ed0f0" stroke-width="2"
               stroke-dasharray="7 5" opacity=".85"/>`;
       g += `<text x="${X(m*Math.min(R*0.35, maxX*0.5))}" y="${Y(Math.min(R*0.5, kaarrosTila*0.7))}"
-              text-anchor="middle" font-size="15" font-weight="700" fill="#7ed0f0">säde ${fmt(R)} m</text>`;
+              text-anchor="middle" font-size="15" font-weight="700" fill="#7ed0f0">veneen säde ${fmt(R)} m</text>`;
+      // Sisimmän vieheen oma säde: siitä 0,5 km/h oikeasti seuraa.
+      if(kr.etaisyys){
+        g += `<text x="${X(m*Math.min(R*0.35, maxX*0.5))}" y="${(Y(Math.min(R*0.5, kaarrosTila*0.7))+17).toFixed(0)}"
+                text-anchor="middle" font-size="13" fill="#5f9fbb">sisin ${fmt(R - kr.etaisyys)} m keskiöstä</text>`;
+      }
+      // Jäykän oletuksen raja: pitkällä siimalla laskenta ei enää päde.
+      if(kr.etaisyys > KAARROS_JAYKKA_RAJA_M){
+        g += `<text x="${CX}" y="${(H - mb - 8).toFixed(0)}" text-anchor="middle" font-size="13" fill="var(--warn)">
+                Rajoittava on ${fmt(kr.etaisyys)} m sivulla — pitkä siima ei käyttäydy näin jäykästi</text>`;
+      }
       // Rajoittava viehe korostetaan
       if(kr.rajoittava){
         const rx = X(kr.rajoittava.x), ry = Y(-kr.etaisyys*PLAANARI_TAKA);
@@ -2074,8 +2116,27 @@ function tab(id, el){
   document.getElementById('tab-'+id).classList.add('on'); el.classList.add('on');
 }
 function setManualSpeed(v){ if(gpsId!==null) return; speed = parseFloat(v); renderAll(); }
-function setBottom(v){ bottomD = parseFloat(v); renderAll(); }
-function setTarget(v){ targetD = parseFloat(v); renderAll(); }
+/* Pohja ja tavoite: liuku 1-30 m, mutta numerokenttään voi kirjoittaa
+   suuremmankin. Liuku kattaa käytännön alueen, kenttä harvinaiset syvänteet.
+   Kumpikin päivittää toisen, jotta ne pysyvät synkassa. */
+function setBottom(v){
+  const n = parseFloat(v);
+  if(isNaN(n) || n < 0) return;
+  bottomD = n;
+  const s = document.getElementById('bot'), k = document.getElementById('botNum');
+  if(s && n <= 30 && parseFloat(s.value) !== n) s.value = n;
+  if(k && parseFloat(k.value) !== n) k.value = n;
+  renderKevyt();
+}
+function setTarget(v){
+  const n = parseFloat(v);
+  if(isNaN(n) || n < 0) return;
+  targetD = n;
+  const s = document.getElementById('tgt'), k = document.getElementById('tgtNum');
+  if(s && n <= 30 && parseFloat(s.value) !== n) s.value = n;
+  if(k && parseFloat(k.value) !== n) k.value = n;
+  renderKevyt();
+}
 function setCfg(k,v){ const n = parseFloat(v); if(!isNaN(n)){ CFG[k]=n; lipCache.clear(); renderAll(); } }
 function delRod(side,i){ rods[side].splice(i,1); renderAll(); }
 function delLure(i){ if(confirm('Poistetaanko '+lures[i].name+'?')){ lures.splice(i,1); renderAll(); } }
@@ -2452,6 +2513,8 @@ function kirjastoAvaa(id){
   if(gpsId === null) speed = k.data.speed;   // GPS voittaa tallennetun nopeuden
   document.getElementById('bot').value = bottomD;
   document.getElementById('tgt').value = targetD;
+  document.getElementById('botNum').value = bottomD;
+  document.getElementById('tgtNum').value = targetD;
   document.getElementById('spd').value = speed;
   document.getElementById('kirjastoTila').textContent = 'Avattu: ' + k.paikka + ' / ' + k.nimi;
   renderAll();
