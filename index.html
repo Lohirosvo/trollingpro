@@ -122,7 +122,7 @@ nav button.on{color:var(--sky)}
 <body>
 
 <header>
-  <div class="brand">Trolling<em>Pro</em> 2 <span style="font-size:10px;color:var(--ink-faint);font-weight:400">v4.8</span></div>
+  <div class="brand">Trolling<em>Pro</em> 2 <span style="font-size:10px;color:var(--ink-faint);font-weight:400">v4.9</span></div>
   <div id="gpsChip" class="chip">GPS pois</div>
 </header>
 
@@ -145,10 +145,16 @@ nav button.on{color:var(--sky)}
           <span id="kaarrosNapit" style="display:none;gap:4px">
             <button class="pill" data-k="vasen" onclick="vaihdaKaarros('vasen')" style="padding:4px 9px;font-size:12px">↰</button>
             <button class="pill" data-k="oikea" onclick="vaihdaKaarros('oikea')" style="padding:4px 9px;font-size:12px">↱</button>
-            <span id="kaarrosSelite" style="font-size:11px;color:var(--ink-faint)"></span>
+            <span id="kaarrosSelite" style="font-size:11px;color:var(--ink-faint)"></span><span onclick="naytaOhje('kaarros')" style="display:inline-flex;align-items:center;justify-content:center;width:20px;height:20px;border-radius:50%;border:1px solid #3d7f9e;color:#7ed0f0;font-size:12px;font-weight:700;margin-left:8px;cursor:pointer;vertical-align:middle" title="Ohje">i</span>
           </span>
         </div>
-        <span id="nakymaSelite">Mittakaava 1:1</span>
+        <span id="nakymaSelite">Mittakaava 1:1</span><span onclick="naytaOhje('nakymat')" style="display:inline-flex;align-items:center;justify-content:center;width:20px;height:20px;border-radius:50%;border:1px solid #3d7f9e;color:#7ed0f0;font-size:12px;font-weight:700;margin-left:8px;cursor:pointer;vertical-align:middle" title="Ohje">i</span>
+      </div>
+      <div id="kulmaRivi" style="display:none; align-items:center; gap:8px; padding:6px 10px 2px">
+        <span style="font-size:12px;color:var(--ink-faint);min-width:44px">Suunta</span>
+        <input type="range" id="linnunKulmaSaadin" min="0" max="359" step="5" value="55"
+               oninput="vaihdaLinnunKulma(this.value)" style="flex:1">
+        <span id="kulmaTila" style="font-size:12px;color:var(--ink-faint);min-width:34px;text-align:right">55°</span>
       </div>
     </div>
 
@@ -176,13 +182,13 @@ nav button.on{color:var(--sky)}
     </div>
 
     <div class="card" style="margin-top:10px">
-      <h3>Plaanarit</h3>
+      <h3>Plaanarit<span onclick="naytaOhje('plaanari')" style="display:inline-flex;align-items:center;justify-content:center;width:20px;height:20px;border-radius:50%;border:1px solid #3d7f9e;color:#7ed0f0;font-size:12px;font-weight:700;margin-left:8px;cursor:pointer;vertical-align:middle" title="Ohje">i</span></h3>
       <div id="plaanariTila"></div>
       <p class="hint">Ensimmäinen plaanarivapa on uloin ja menee kelkkaan. Seuraavat tulevat 20 jalan välein sisäänpäin, ja kelkka siirtyy ulommas. Veneen lähin on säädettävissä 6–12 m, jotta Dipsyt mahtuvat sen sisäpuolelle.</p>
     </div>
 
     <div class="card" style="margin-top:10px">
-      <h3>Takilat</h3>
+      <h3>Takilat<span onclick="naytaOhje('takila')" style="display:inline-flex;align-items:center;justify-content:center;width:20px;height:20px;border-radius:50%;border:1px solid #3d7f9e;color:#7ed0f0;font-size:12px;font-weight:700;margin-left:8px;cursor:pointer;vertical-align:middle" title="Ohje">i</span></h3>
       <div id="takilaLista"></div>
       <div class="row" style="gap:6px">
         <button class="btn sm" onclick="lisaaTakila()">Lisää takila</button>
@@ -238,7 +244,7 @@ nav button.on{color:var(--sky)}
   <!-- ============ KALUSTO ============ -->
   <section id="tab-kalusto" class="tab">
     <div class="card">
-      <h3>Kirjasto — tallennetut kattaukset</h3>
+      <h3>Kirjasto — tallennetut kattaukset<span onclick="naytaOhje('kirjasto')" style="display:inline-flex;align-items:center;justify-content:center;width:20px;height:20px;border-radius:50%;border:1px solid #3d7f9e;color:#7ed0f0;font-size:12px;font-weight:700;margin-left:8px;cursor:pointer;vertical-align:middle" title="Ohje">i</span></h3>
       <div class="pills" id="kirjastoHyllyt">
         <button class="pill on" data-h="jarvi" onclick="setKirjastoHylly('jarvi')">Järvi</button>
         <button class="pill" data-h="meri" onclick="setKirjastoHylly('meri')">Meri</button>
@@ -319,7 +325,7 @@ nav button.on{color:var(--sky)}
     <div class="sheet-head"><b id="rodSheetTitle">Lisää vapa</b><button class="btn sm ghost" onclick="closeSheets()">Sulje</button></div>
     <div class="sheet-body">
       <div class="card"><h3>Uistin</h3><div id="rodLures" class="pills"></div></div>
-      <div class="card" style="border-color:#5a7a88"><h3 style="color:#c9d4da">Kiinnitys</h3>
+      <div class="card" style="border-color:#5a7a88"><h3 style="color:#c9d4da">Kiinnitys<span onclick="naytaOhje('dipsy')" style="display:inline-flex;align-items:center;justify-content:center;width:20px;height:20px;border-radius:50%;border:1px solid #3d7f9e;color:#7ed0f0;font-size:12px;font-weight:700;margin-left:8px;cursor:pointer;vertical-align:middle" title="Ohje">i</span></h3>
         <div id="rodDiverPills" class="pills"></div>
         <div id="rodDiverLine" class="pills" style="display:none;border-top:1px solid var(--line-soft)"></div>
         <div class="row" id="rodPerukeRivi" style="display:none">
@@ -362,6 +368,17 @@ nav button.on{color:var(--sky)}
     </div>
     <div class="sheet-foot"><button class="btn wide go" onclick="commitLure()">Tallenna uistin</button></div>
   </div>
+</div>
+
+<div id="ohjeLaatikko" style="display:none;position:fixed;left:10px;right:10px;bottom:78px;z-index:210;
+     background:#0f2534;border:1px solid #3d7f9e;border-radius:12px;padding:14px;
+     max-height:60vh;overflow:auto;box-shadow:0 8px 28px rgba(0,0,0,.55)">
+  <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;margin-bottom:8px">
+    <b id="ohjeOtsikko" style="color:#7ed0f0;font-size:16px"></b>
+    <button onclick="suljeOhje()" style="background:none;border:1px solid #3d7f9e;color:#7ed0f0;
+            border-radius:8px;padding:4px 12px;font-size:13px">sulje</button>
+  </div>
+  <div id="ohjeTeksti" style="font-size:13.5px;line-height:1.55;color:#c8dbe6;white-space:pre-wrap"></div>
 </div>
 
 <div id="virheBox" style="display:none;position:fixed;left:8px;right:8px;bottom:78px;z-index:200;
@@ -1034,7 +1051,9 @@ const MAXD_MIN = 12, MAXD_MAX = 30;
 let MAXD = MAXD_MIN, VH = SURF + MAXD*PXM + 30;
 
 function paivitaAsteikko(syvin){
-  const tarve = Math.max(MAXD_MIN, Math.min(MAXD_MAX, Math.ceil((syvin + 1.5)/2)*2));
+  // Zoom kaventaa tai levittää näkyvää syvyysaluetta sivukuvassa.
+  const z = (typeof nykyZoom === 'function') ? nykyZoom() : 1;
+  const tarve = Math.max(MAXD_MIN, Math.min(MAXD_MAX, Math.ceil((syvin + 1.5)/2*z)*2));
   MAXD = tarve;
   VH = SURF + MAXD*PXM + 30;
 }
@@ -1238,12 +1257,18 @@ function drawFish(){
   // Automaattinen etäisyys sovittaa kaluston kuvaan; zoomilla voi tarkentaa
   // yhteen kohtaan tai vetäytyä kauemmas.
   const etaisyys = Math.max(22, Math.abs(takaisin) * 0.9 + 14) * linnunZoom;
+  // KAMERAN SUUNTA — 5.9.2026. Aiemmin kamera oli kiinteästi n. 37° sivussa.
+  // Nyt kulma on säädettävissä 0-360°: 0 = suoraan takaa, 90 = tyyrpuurin
+  // sivulta, 180 = edestä, 270 = paapuurin sivulta. Oletus 55° antaa enemmän
+  // sivuprofiilia kuin ennen, jolloin syvyyserot erottuvat paremmin.
+  const a3 = linnunKulma*Math.PI/180;
+  const kohdeY = takaisin*0.45;
   const kam = {
-    x: linnunPuoli === 'oikea' ? etaisyys*0.42 : -etaisyys*0.42,
-    y: takaisin - etaisyys*0.55,
+    x: Math.sin(a3)*etaisyys*0.75,
+    y: kohdeY - Math.cos(a3)*etaisyys*0.75,
     z: -Math.max(11, syvin*0.85 + 7),          // negatiivinen = pinnan yläpuolella
     kohdeX: 0,
-    kohdeY: takaisin*0.45,
+    kohdeY: kohdeY,
     kohdeZ: syvin*0.45
   };
 
@@ -1360,16 +1385,36 @@ function drawFish(){
 
 /* Kalan puoli. Oletus auringon puoli — vieheet näkyvät sieltä vasten valoa. */
 let linnunPuoli = 'oikea';
-let linnunZoom = 1.0;          // 1,0 = automaattinen sovitus
+let linnunKulma = 55;          // astetta, 0 = suoraan takaa
+/* Zoom jokaiselle näkymälle erikseen: sivukuvassa ja ylänäkymässä
+   luonteva mittakaava on eri kuin lintuperspektiivissä, joten yhteinen
+   luku pakottaisi kompromissiin. */
+let zoomit = { sivu: 1.0, ylhaalta: 1.0, kala: 1.0 };
+function nykyZoom(){ return zoomit[nakyma] || 1.0; }
+Object.defineProperty(globalThis, 'linnunZoom', {
+  get(){ return zoomit.kala; }, set(v){ zoomit.kala = v; }, configurable: true
+});
+
+function vaihdaLinnunKulma(v){
+  linnunKulma = ((parseFloat(v) % 360) + 360) % 360;
+  const n = document.getElementById('kulmaTila');
+  if(n) n.textContent = Math.round(linnunKulma) + '°';
+  renderKevyt();
+}
 
 function vaihdaZoom(suunta){
-  // Rajat: 0,45 = hyvin lähellä (yksi takila täyttää kuvan),
-  //        2,2  = koko kalusto kaukaa. Askel 1,25× jotta muutos tuntuu.
-  linnunZoom = Math.max(0.45, Math.min(2.2,
-    suunta > 0 ? linnunZoom / 1.25 : linnunZoom * 1.25));
-  const n = document.getElementById('zoomTila');
-  if(n) n.textContent = Math.round(100 / linnunZoom) + ' %';
+  // Rajat 0,45-2,2 ja askel 1,25× jotta muutos tuntuu heti.
+  // Zoom tallentuu näkymäkohtaisesti, joten sivukuvan tarkennus ei katoa
+  // kun käy ylänäkymässä.
+  const nyt = nykyZoom();
+  zoomit[nakyma] = Math.max(0.45, Math.min(2.2,
+    suunta > 0 ? nyt / 1.25 : nyt * 1.25));
+  paivitaZoomTila();
   renderKevyt();
+}
+function paivitaZoomTila(){
+  const n = document.getElementById('zoomTila');
+  if(n) n.textContent = Math.round(100 / nykyZoom()) + ' %';
 }
 function paivitaKalanPuoli(){
   const au = aurinkoNyt(sijainti.lat, sijainti.lon);
@@ -1543,7 +1588,8 @@ function drawTop(){
   // Ilman tätä kaari jäi ruudun ulkopuolelle.
   const kaarrosTila = kaarrosSuunta ? 14 : 3;   // metriä keulan puolella
   const pxX = (W-ml-mr)/(2*maxX), pxY = (H-mt-mb)/(maxY + kaarrosTila);
-  const px = Math.min(pxX, pxY);              // 1:1, sama molempiin suuntiin
+  // Zoom kertoo mittakaavan molemmissa suunnissa, joten 1:1 säilyy.
+  const px = Math.min(pxX, pxY) / nykyZoom();
   const CX = W/2, CY = mt + kaarrosTila*px;   // vene, keulan puolella tilaa
   const X = m => CX + m*px, Y = m => CY - m*px;
 
@@ -2099,7 +2145,10 @@ function renderAll(){
   const pn = document.getElementById('kalaPuoliNappi');
   if(pn) pn.style.display = (nakyma === 'kala') ? '' : 'none';
   const zn = document.getElementById('zoomNapit');
-  if(zn) zn.style.display = (nakyma === 'kala') ? 'inline-flex' : 'none';
+  if(zn) zn.style.display = 'inline-flex';       // zoom kaikissa näkymissä
+  const kn2 = document.getElementById('kulmaRivi');
+  if(kn2) kn2.style.display = (nakyma === 'kala') ? 'flex' : 'none';
+  paivitaZoomTila();
   const kn = document.getElementById('kaarrosNapit');
   if(kn) kn.style.display = (nakyma === 'ylhaalta' || nakyma === 'kala') ? 'inline-flex' : 'none';
   const items = (nakyma === 'ylhaalta') ? (drawTop(), collect())
@@ -2445,6 +2494,96 @@ function calibrateFromMeasurement(){
   out.textContent = `${lure.name}: vetovastus ×${fmt(lure.dragMul,2)} (oli ×${fmt(orig,2)}). Kaikki tämän uistimen luvut päivittyivät.`;
   renderAll();
 }
+
+/* ============================================================
+   OHJEET — i-pallot
+   ============================================================
+   Lisätty 5.9.2026. Sovellus tekee paljon oletuksia ja kalibrointeja, jotka
+   eivät näy käyttöliittymästä. Ohjepallo kertoo kunkin kohdan takana olevan
+   päättelyn ja SEN RAJAT — se on tässä sovelluksessa tärkeämpää kuin käyttöohje,
+   koska useimmat luvut ovat malleja eivätkä mittauksia. */
+const OHJEET = {
+  kaarros: {
+    otsikko: 'Kaarros',
+    teksti: 'Näyttää jyrkimmän kaarteen jolla sisin viehe pysyy vielä liikkeessä. '
+      + 'Sitova ehto: sisin ei saa hidastua alle 0,5 km/h.\n\n'
+      + '"Veneen säde" on veneen oma kääntösäde. "Sisin ... m keskiöstä" on '
+      + 'rajoittavan vieheen oma säde — siitä 0,5 km/h seuraa.\n\n'
+      + 'RAJA: laskenta olettaa että koko kalusto kiertää jäykästi kääntökeskiön '
+      + 'ympäri. Lyhyellä siimalla se pätee suunnilleen. Pitkällä ei: viehe leikkaa '
+      + 'kaarteen poikki ja sisäkurvin kelkka menettää vedon. Kuva varoittaa kun '
+      + 'rajoittava on yli 15 m sivulla.'
+  },
+  takila: {
+    otsikko: 'Takilat',
+    teksti: 'Kuula uppoaa omalla painollaan; vauhti työntää sitä taaksepäin '
+      + '(blowback). Vaijerin ja kuulan vastuskertoimet on SOVITETTU Cannonin '
+      + 'omiin blowback-kaavioihin (8/10/12 lb × 2/4/6 mph) — jäännösvirhe on '
+      + 'alle 5 jalkaa 160 jalan asteikolla.\n\n'
+      + 'Vapautuspituus on siima vapauttajasta uistimeen. Uistin laskeutuu siitä '
+      + 'alaspäin oman uintinsa mukaan.\n\n'
+      + 'Takkuvaroitus tulee kun kaksi siimaa risteää tai uistimet ovat alle 1,2 m '
+      + 'päässä toisistaan. Se 1,2 m on arvio, ei mittaus.'
+  },
+  plaanari: {
+    otsikko: 'Plaanarit',
+    teksti: 'Uistimet roikkuvat SELKÄSIIMASSA, joka menee laidasta kelkalle. '
+      + 'Ensimmäinen lisätty vapa on uloin ja menee kelkkaan; seuraavat tulevat '
+      + '20 jalan välein sisäänpäin, ja kelkka siirtyy ulommas.\n\n'
+      + 'Kelkka jää 15° kulmaan taakse ja sivulle etäisyydestä riippumatta, joten '
+      + 'uloin kiinnityspiste on myös kauimpana takana.\n\n'
+      + 'Veneen lähin on säädettävissä 6–12 m, jotta Dipsyt mahtuvat sen '
+      + 'sisäpuolelle. Uloin raja on 50 m.'
+  },
+  dipsy: {
+    otsikko: 'Dipsy Diver',
+    teksti: 'Syvyys = siimaa ulkona jaettuna suhdeluvulla. Suhde riippuu '
+      + 'asetuksesta (0–3), siimatyypistä ja -paksuudesta sekä nopeudesta.\n\n'
+      + 'Sama malli ja sama kalibrointi kuin uistelututkan syvyyslaskurissa — '
+      + 'kaksi sovellusta ei saa olla eri mieltä samasta asiasta.\n\n'
+      + 'Luhr Jensenin omaa taulukkoa EI käytetä, koska se pätee O-rengas '
+      + 'paikallaan. Ilman rengasta diveri sukeltaa syvemmälle.\n\n'
+      + 'Peruke 0–40 ft: viehe roikkuu diverin takana ja laskeutuu oman uintinsa '
+      + 'mukaan hieman syvemmälle.'
+  },
+  nakymat: {
+    otsikko: 'Näkymät',
+    teksti: 'SIVULTA: syvyys ja etäisyys mittakaavassa 1:1. Paras kun haluat '
+      + 'tietää mihin syvyyteen viehe menee.\n\n'
+      + 'YLHÄÄLTÄ: levitys. Näyttää plaanarit, kelkat ja kaarroksen. Paras kun '
+      + 'mietit mahtuuko kaarros tai osuvatko siimat toisiinsa.\n\n'
+      + 'YLHÄÄLTÄ TAKAA: lintuperspektiivi. Plaanarit jätetään pois, koska ne ovat '
+      + 'niin kaukana sivulla että muu kutistuisi pisteiksi. Suunta-säätimellä voi '
+      + 'kiertää kameraa 360°.\n\n'
+      + 'Zoom toimii kaikissa näkymissä ja muistetaan kullekin erikseen.'
+  },
+  kirjasto: {
+    otsikko: 'Kirjasto',
+    teksti: 'Tallentaa koko kattauksen: vavat, takilat, plaanarin sisimmän, '
+      + 'nopeuden, pohjan ja tavoitteen.\n\n'
+      + 'EI tallenna uistinkirjastoa eikä mallin vakioita — ne ovat kalustoa, '
+      + 'eivät kattaus, ja pysyvät samoina paikasta riippumatta.\n\n'
+      + 'Hyllyt järvi ja meri pitävät listat erillään. Paikka valitaan valmiista '
+      + 'listasta, jotta samat nimet toistuvat eikä synny kahta kirjoitusasua.'
+  },
+  kalibrointi: {
+    otsikko: 'Kalibrointi',
+    teksti: 'Mallin vakiot on säädetty niin että laskenta osuu tunnettuihin '
+      + 'mittauksiin. Jos oma kokemuksesi poikkeaa, kalibroi: aja viehe pohjaan '
+      + 'tunnetulla siimapituudella ja syötä todellinen syvyys.\n\n'
+      + 'Mitattu voittaa mallin aina. Yksi hyvä mittaus on parempi kuin mikään '
+      + 'taulukko, koska se koskee sinun kalustoasi ja sinun siimaasi.'
+  }
+};
+
+function naytaOhje(avain){
+  const o = OHJEET[avain];
+  if(!o) return;
+  document.getElementById('ohjeOtsikko').textContent = o.otsikko;
+  document.getElementById('ohjeTeksti').textContent = o.teksti;
+  document.getElementById('ohjeLaatikko').style.display = 'block';
+}
+function suljeOhje(){ document.getElementById('ohjeLaatikko').style.display = 'none'; }
 
 /* ============================================================
    KIRJASTO — tallennetut pyyntiasetukset
