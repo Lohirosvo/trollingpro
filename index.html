@@ -122,7 +122,7 @@ nav button.on{color:var(--sky)}
 <body>
 
 <header>
-  <div class="brand">Trolling<em>Pro</em> 2 <span style="font-size:10px;color:var(--ink-faint);font-weight:400">v5.0</span></div>
+  <div class="brand">Trolling<em>Pro</em> 2 <span style="font-size:10px;color:var(--ink-faint);font-weight:400">v5.1</span></div>
   <div id="gpsChip" class="chip">GPS pois</div>
 </header>
 
@@ -136,7 +136,7 @@ nav button.on{color:var(--sky)}
           <button class="pill on" data-n="sivu" onclick="vaihdaNakyma('sivu')" style="padding:4px 10px;font-size:12px">Sivulta</button>
           <button class="pill" data-n="ylhaalta" onclick="vaihdaNakyma('ylhaalta')" style="padding:4px 10px;font-size:12px">Ylhäältä</button>
           <button class="pill" data-n="kala" onclick="vaihdaNakyma('kala')" style="padding:4px 10px;font-size:12px">Ylhäältä takaa</button>
-          <button class="pill" id="kalaPuoliNappi" onclick="vaihdaKalanPuoli()" style="padding:4px 10px;font-size:12px;display:none">⇄ puoli</button>
+          <button class="pill" id="kalaPuoliNappi" onclick="asetaKulmaTakaa()" style="padding:4px 10px;font-size:12px;display:none">Takaa</button>
           <span id="zoomNapit" style="display:none;gap:4px;align-items:center;margin-right:10px">
             <button class="pill" onclick="vaihdaZoom(-1)" style="padding:4px 11px;font-size:15px;line-height:1">−</button>
             <span id="zoomTila" style="font-size:12px;color:var(--ink-faint);min-width:38px;text-align:center">100 %</span>
@@ -144,6 +144,7 @@ nav button.on{color:var(--sky)}
           </span>
           <span id="kaarrosNapit" style="display:none;gap:4px">
             <button class="pill" data-k="vasen" onclick="vaihdaKaarros('vasen')" style="padding:4px 9px;font-size:12px">↰</button>
+            <button class="pill on" data-k="suora" onclick="vaihdaKaarros(null)" style="padding:4px 9px;font-size:12px">↑</button>
             <button class="pill" data-k="oikea" onclick="vaihdaKaarros('oikea')" style="padding:4px 9px;font-size:12px">↱</button>
             <span id="kaarrosSelite" style="font-size:11px;color:var(--ink-faint)"></span><span onclick="naytaOhje('kaarros')" style="display:inline-flex;align-items:center;justify-content:center;width:20px;height:20px;border-radius:50%;border:1px solid #3d7f9e;color:#7ed0f0;font-size:12px;font-weight:700;margin-left:8px;cursor:pointer;vertical-align:middle" title="Ohje">i</span>
           </span>
@@ -1312,17 +1313,67 @@ function drawFish(){
     }
   }
 
-  // VENE
-  const vk = kalaProjektio(kam, {x:0, y:2.6, z:0}, W, H);
-  const v1 = kalaProjektio(kam, {x:-VENE_LAITA, y:-2.4, z:0}, W, H);
-  const v2b = kalaProjektio(kam, {x: VENE_LAITA, y:-2.4, z:0}, W, H);
-  const v3 = kalaProjektio(kam, {x:-VENE_LAITA, y:1.0, z:0}, W, H);
-  const v4 = kalaProjektio(kam, {x: VENE_LAITA, y:1.0, z:0}, W, H);
-  if(vk && v1 && v2b && v3 && v4){
-    g += `<path d="M${vk.x.toFixed(1)},${vk.y.toFixed(1)} L${v4.x.toFixed(1)},${v4.y.toFixed(1)}
-            L${v2b.x.toFixed(1)},${v2b.y.toFixed(1)} L${v1.x.toFixed(1)},${v1.y.toFixed(1)}
-            L${v3.x.toFixed(1)},${v3.y.toFixed(1)} Z"
-            fill="#cfe3ee" stroke="#8fb6c9" stroke-width="1.5" opacity=".95"/>`;
+  /* VENE — valkoinen hyttivene, Örnvikin tyyliin.
+     Piirretään oikeana kappaleena: runko, laidat, hytti ja tuulilasi
+     projisoidaan erikseen, jotta vene kääntyy uskottavasti kun kameraa
+     kierretään. Mitat ovat samat kuin muualla mallissa: leveys 2,5 m,
+     pituus keulasta perään 5 m. */
+  const P = (x,y,z) => kalaProjektio(kam, {x:x, y:y, z:z}, W, H);
+  const L = VENE_LAITA;
+  const kohta = {
+    keula:  P(0, 2.6, 0),
+    kOik:   P(L*0.62, 1.6, 0),   kVas: P(-L*0.62, 1.6, 0),
+    lOik:   P(L, 0.2, 0),        lVas: P(-L, 0.2, 0),
+    pOik:   P(L*0.92, -2.4, 0),  pVas: P(-L*0.92, -2.4, 0),
+    // laidan ylareuna 0,55 m pinnan ylapuolella (z negatiivinen = ylos)
+    keulaY: P(0, 2.6, -0.55),
+    lOikY:  P(L, 0.2, -0.55),    lVasY: P(-L, 0.2, -0.55),
+    pOikY:  P(L*0.92, -2.4, -0.55), pVasY: P(-L*0.92, -2.4, -0.55),
+    // hytti: 1,7 m korkea, keulan puolella
+    hEtuO:  P(L*0.72, 1.5, -0.55),  hEtuV: P(-L*0.72, 1.5, -0.55),
+    hTakO:  P(L*0.82, -0.6, -0.55), hTakV: P(-L*0.82, -0.6, -0.55),
+    hEtuOY: P(L*0.60, 1.2, -1.95),  hEtuVY: P(-L*0.60, 1.2, -1.95),
+    hTakOY: P(L*0.78, -0.6, -2.05), hTakVY: P(-L*0.78, -0.6, -2.05)
+  };
+  const onOk = Object.keys(kohta).every(k=>kohta[k]);
+  if(onOk){
+    const pol = (...ps) => ps.map(p=>p.x.toFixed(1)+','+p.y.toFixed(1)).join(' ');
+    // kansi
+    g += `<polygon points="${pol(kohta.keula,kohta.kOik,kohta.lOik,kohta.pOik,
+            kohta.pVas,kohta.lVas,kohta.kVas)}"
+            fill="#eef6fa" stroke="#93b4c6" stroke-width="1.2"/>`;
+    // laidat kylkinä: pinnasta laidan ylareunaan
+    g += `<polygon points="${pol(kohta.lOik,kohta.pOik,kohta.pOikY,kohta.lOikY)}"
+            fill="#dfeaf1" stroke="#93b4c6" stroke-width="1"/>`;
+    g += `<polygon points="${pol(kohta.lVas,kohta.pVas,kohta.pVasY,kohta.lVasY)}"
+            fill="#d3e1ea" stroke="#93b4c6" stroke-width="1"/>`;
+    g += `<polygon points="${pol(kohta.keula,kohta.lOik,kohta.lOikY,kohta.keulaY)}"
+            fill="#e6f0f6" stroke="#93b4c6" stroke-width="1"/>`;
+    g += `<polygon points="${pol(kohta.keula,kohta.lVas,kohta.lVasY,kohta.keulaY)}"
+            fill="#dae7ef" stroke="#93b4c6" stroke-width="1"/>`;
+    // punainen vesiraita laidan alareunassa
+    g += `<polyline points="${pol(kohta.keula,kohta.lOik,kohta.pOik)}"
+            fill="none" stroke="#e8564d" stroke-width="2.4"/>`;
+    g += `<polyline points="${pol(kohta.keula,kohta.lVas,kohta.pVas)}"
+            fill="none" stroke="#e8564d" stroke-width="2.4"/>`;
+    // hytti
+    g += `<polygon points="${pol(kohta.hEtuO,kohta.hTakO,kohta.hTakOY,kohta.hEtuOY)}"
+            fill="#e4eef4" stroke="#8aa9ba" stroke-width="1"/>`;
+    g += `<polygon points="${pol(kohta.hEtuV,kohta.hTakV,kohta.hTakVY,kohta.hEtuVY)}"
+            fill="#d6e3ec" stroke="#8aa9ba" stroke-width="1"/>`;
+    g += `<polygon points="${pol(kohta.hEtuOY,kohta.hTakOY,kohta.hTakVY,kohta.hEtuVY)}"
+            fill="#f2f8fb" stroke="#8aa9ba" stroke-width="1"/>`;
+    // tuulilasi vinossa, tummansininen
+    g += `<polygon points="${pol(kohta.hEtuO,kohta.hEtuV,kohta.hEtuVY,kohta.hEtuOY)}"
+            fill="#5aa8cc" stroke="#cfe6f2" stroke-width="1" opacity=".9"/>`;
+    // sivuikkunat
+    const ikk = (a1,b1,c1,d1,alpha) =>
+      `<polygon points="${pol(a1,b1,c1,d1)}" fill="#4e9ec4" opacity="${alpha}"/>`;
+    const li = (p1,p2,t) => ({ x:p1.x+(p2.x-p1.x)*t, y:p1.y+(p2.y-p1.y)*t });
+    g += ikk(li(kohta.hEtuOY,kohta.hTakOY,0.12), li(kohta.hEtuOY,kohta.hTakOY,0.80),
+             li(kohta.hEtuO,kohta.hTakO,0.80),   li(kohta.hEtuO,kohta.hTakO,0.12), '.55');
+    g += ikk(li(kohta.hEtuVY,kohta.hTakVY,0.12), li(kohta.hEtuVY,kohta.hTakVY,0.80),
+             li(kohta.hEtuV,kohta.hTakV,0.80),   li(kohta.hEtuV,kohta.hTakV,0.12), '.45');
   }
 
   // KOHTEET takaa eteen
@@ -1369,8 +1420,11 @@ function drawFish(){
   });
 
   const plaanareita = rods.left.filter(r=>r.board).length + rods.right.filter(r=>r.board).length;
+  const suuntaNimi = (linnunKulma < 20 || linnunKulma > 340) ? 'suoraan takaa'
+                   : (linnunKulma < 160) ? 'tyyrpuurin puolelta'
+                   : (linnunKulma < 200) ? 'edestä' : 'paapuurin puolelta';
   g += `<text x="12" y="${H-14}" font-size="14" fill="#7093a8">Lintuperspektiivi ${
-    linnunPuoli==='oikea'?'tyyrpuurin':'paapuurin'} puolelta · ${Math.round(etaisyys)} m päästä`
+    suuntaNimi} · ${Math.round(linnunKulma)}° · ${Math.round(etaisyys)} m päästä`
     + (plaanareita ? ` · ${plaanareita} plaanarivapaa ei näy tässä` : '') + `</text>`;
 
   document.getElementById('profile').innerHTML =
@@ -1423,10 +1477,18 @@ function paivitaKalanPuoli(){
   const suht = ((au.suunta - kurssi)%360 + 360)%360;
   linnunPuoli = (suht < 180) ? 'oikea' : 'vasen';
 }
-function vaihdaKalanPuoli(){
-  linnunPuoli = (linnunPuoli === 'oikea') ? 'vasen' : 'oikea';
-  renderAll();
+/* KORJATTU 5.9.2026: "⇄ puoli" -nappi kuoli kun kulmasäädin lisättiin.
+   Se asetti linnunPuoli-muuttujan, jota piirto ei enää käytä — kameran suunta
+   tulee nyt kokonaan kulmasta. Nappi tekee sen sijaan sen mitä siltä oikeasti
+   tarvitaan: palauttaa kameran suoraan taakse yhdellä painalluksella, kun
+   säätimellä on kierretty johonkin oudompaan kulmaan. */
+function asetaKulmaTakaa(){
+  vaihdaLinnunKulma(0);
+  const s = document.getElementById('linnunKulmaSaadin');
+  if(s) s.value = 0;
 }
+
+function vaihdaKalanPuoli(){ asetaKulmaTakaa(); }   // vanha nimi, sama toiminto
 
 /* ============================================================
    KAARROS
@@ -1527,8 +1589,11 @@ function kaarrosVaikutus(suunta, v, R){
 
 /* Kaarros: null = suora veto, 'vasen' tai 'oikea' = näytä jyrkin kaarre. */
 let kaarrosSuunta = null;
+/* Kaarros: vasen, suora tai oikea. Suora on oma nappinsa nuolten välissä —
+   aiemmin siihen pääsi vain painamalla samaa nuolta uudelleen, mikä ei ollut
+   mitenkään näkyvissä. */
 function vaihdaKaarros(s){
-  kaarrosSuunta = (kaarrosSuunta === s) ? null : s;
+  kaarrosSuunta = (s === null || kaarrosSuunta === s) ? null : s;
   const sel = document.getElementById('kaarrosSelite');
   if(sel){
     const kr = kaarrosSuunta ? kaarrosJyrkinSade(kaarrosSuunta, speed) : null;
@@ -1536,7 +1601,7 @@ function vaihdaKaarros(s){
       ? 'jyrkin ' + fmt(kr.sade) + ' m' : '';
   }
   document.querySelectorAll('#kaarrosNapit .pill').forEach(p=>
-    p.classList.toggle('on', p.dataset.k === kaarrosSuunta));
+    p.classList.toggle('on', p.dataset.k === (kaarrosSuunta || 'suora')));
   renderAll();
 }
 
