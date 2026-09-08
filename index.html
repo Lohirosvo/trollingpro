@@ -122,7 +122,7 @@ nav button.on{color:var(--sky)}
 <body>
 
 <header>
-  <div class="brand">Trolling<em>Pro</em> 2 <span style="font-size:10px;color:var(--ink-faint);font-weight:400">v5.1</span></div>
+  <div class="brand">Trolling<em>Pro</em> 2 <span style="font-size:10px;color:var(--ink-faint);font-weight:400">v5.2</span></div>
   <div id="gpsChip" class="chip">GPS pois</div>
 </header>
 
@@ -137,6 +137,7 @@ nav button.on{color:var(--sky)}
           <button class="pill" data-n="ylhaalta" onclick="vaihdaNakyma('ylhaalta')" style="padding:4px 10px;font-size:12px">Ylhäältä</button>
           <button class="pill" data-n="kala" onclick="vaihdaNakyma('kala')" style="padding:4px 10px;font-size:12px">Ylhäältä takaa</button>
           <button class="pill" id="kalaPuoliNappi" onclick="asetaKulmaTakaa()" style="padding:4px 10px;font-size:12px;display:none">Takaa</button>
+          <button class="pill" id="pinnanTasoNappi" onclick="asetaPinnanTasolle()" style="padding:4px 10px;font-size:12px;display:none">Pinnasta</button>
           <span id="zoomNapit" style="display:none;gap:4px;align-items:center;margin-right:10px">
             <button class="pill" onclick="vaihdaZoom(-1)" style="padding:4px 11px;font-size:15px;line-height:1">−</button>
             <span id="zoomTila" style="font-size:12px;color:var(--ink-faint);min-width:38px;text-align:center">100 %</span>
@@ -156,6 +157,12 @@ nav button.on{color:var(--sky)}
         <input type="range" id="linnunKulmaSaadin" min="0" max="359" step="5" value="55"
                oninput="vaihdaLinnunKulma(this.value)" style="flex:1">
         <span id="kulmaTila" style="font-size:12px;color:var(--ink-faint);min-width:34px;text-align:right">55°</span>
+      </div>
+      <div id="korkeusRivi" style="display:none; align-items:center; gap:8px; padding:2px 10px 8px">
+        <span style="font-size:12px;color:var(--ink-faint);min-width:44px">Korkeus</span>
+        <input type="range" id="linnunKorkeusSaadin" min="0" max="120" step="5" value="100"
+               oninput="vaihdaLinnunKorkeus(this.value)" style="flex:1">
+        <span id="korkeusTila" style="font-size:12px;color:var(--ink-faint);min-width:52px;text-align:right">100 %</span>
       </div>
     </div>
 
@@ -1264,13 +1271,20 @@ function drawFish(){
   // sivuprofiilia kuin ennen, jolloin syvyyserot erottuvat paremmin.
   const a3 = linnunKulma*Math.PI/180;
   const kohdeY = takaisin*0.45;
+  // KAMERAN KORKEUS — säädettävä 5.9.2026.
+  // 0 % = vedenpinnan tasolla (kalan näkökulma takaa), 100 % = lintuperspektiivi.
+  // Pinnan tasolla syvyyserot litistyvät, ylhäältä ne erottuvat — kumpikin
+  // kertoo eri asian, joten valinta kuuluu käyttäjälle.
+  const korkeusMax = Math.max(11, syvin*0.85 + 7);
+  const kamZ = -korkeusMax * linnunKorkeus;
   const kam = {
     x: Math.sin(a3)*etaisyys*0.75,
     y: kohdeY - Math.cos(a3)*etaisyys*0.75,
-    z: -Math.max(11, syvin*0.85 + 7),          // negatiivinen = pinnan yläpuolella
+    z: kamZ,                                   // negatiivinen = pinnan yläpuolella
     kohdeX: 0,
     kohdeY: kohdeY,
-    kohdeZ: syvin*0.45
+    // Pinnan tasolta katsotaan hieman alaspäin, ylhäältä syvemmälle.
+    kohdeZ: syvin * (0.25 + 0.35*linnunKorkeus)
   };
 
   let g = `<rect x="0" y="0" width="${W}" height="${H}" fill="#050f18"/>`;
@@ -1423,8 +1437,10 @@ function drawFish(){
   const suuntaNimi = (linnunKulma < 20 || linnunKulma > 340) ? 'suoraan takaa'
                    : (linnunKulma < 160) ? 'tyyrpuurin puolelta'
                    : (linnunKulma < 200) ? 'edestä' : 'paapuurin puolelta';
-  g += `<text x="12" y="${H-14}" font-size="14" fill="#7093a8">Lintuperspektiivi ${
-    suuntaNimi} · ${Math.round(linnunKulma)}° · ${Math.round(etaisyys)} m päästä`
+  const korkeusNimi = (linnunKorkeus < 0.06) ? 'Pinnan tasolta'
+                    : (linnunKorkeus < 0.45) ? 'Matalalta' : 'Lintuperspektiivi';
+  g += `<text x="12" y="${H-14}" font-size="14" fill="#7093a8">${korkeusNimi} ${
+    suuntaNimi} · ${Math.round(linnunKulma)}° · ${Math.round(-kamZ)} m korkeudelta · ${Math.round(etaisyys)} m päästä`
     + (plaanareita ? ` · ${plaanareita} plaanarivapaa ei näy tässä` : '') + `</text>`;
 
   document.getElementById('profile').innerHTML =
@@ -1440,6 +1456,15 @@ function drawFish(){
 /* Kalan puoli. Oletus auringon puoli — vieheet näkyvät sieltä vasten valoa. */
 let linnunPuoli = 'oikea';
 let linnunKulma = 55;          // astetta, 0 = suoraan takaa
+let linnunKorkeus = 1.0;       // 0 = pinnan tasolla, 1 = lintuperspektiivi
+
+function vaihdaLinnunKorkeus(v){
+  linnunKorkeus = Math.max(0, Math.min(1.2, parseFloat(v)/100));
+  const n = document.getElementById('korkeusTila');
+  if(n) n.textContent = (linnunKorkeus < 0.06) ? 'pinnasta'
+                      : Math.round(linnunKorkeus*100) + ' %';
+  renderKevyt();
+}
 /* Zoom jokaiselle näkymälle erikseen: sivukuvassa ja ylänäkymässä
    luonteva mittakaava on eri kuin lintuperspektiivissä, joten yhteinen
    luku pakottaisi kompromissiin. */
@@ -1485,6 +1510,14 @@ function paivitaKalanPuoli(){
 function asetaKulmaTakaa(){
   vaihdaLinnunKulma(0);
   const s = document.getElementById('linnunKulmaSaadin');
+  if(s) s.value = 0;
+}
+
+/* Pinnan tasolle yhdellä napilla: se on oma katselutapansa, ei vain
+   säätimen ääripää. Vieheet näkyvät silloin kuten kala ne näkee. */
+function asetaPinnanTasolle(){
+  vaihdaLinnunKorkeus(0);
+  const s = document.getElementById('linnunKorkeusSaadin');
   if(s) s.value = 0;
 }
 
@@ -2209,10 +2242,14 @@ function renderLures(){
 function renderAll(){
   const pn = document.getElementById('kalaPuoliNappi');
   if(pn) pn.style.display = (nakyma === 'kala') ? '' : 'none';
+  const pt = document.getElementById('pinnanTasoNappi');
+  if(pt) pt.style.display = (nakyma === 'kala') ? '' : 'none';
   const zn = document.getElementById('zoomNapit');
   if(zn) zn.style.display = 'inline-flex';       // zoom kaikissa näkymissä
   const kn2 = document.getElementById('kulmaRivi');
   if(kn2) kn2.style.display = (nakyma === 'kala') ? 'flex' : 'none';
+  const kr2 = document.getElementById('korkeusRivi');
+  if(kr2) kr2.style.display = (nakyma === 'kala') ? 'flex' : 'none';
   paivitaZoomTila();
   const kn = document.getElementById('kaarrosNapit');
   if(kn) kn.style.display = (nakyma === 'ylhaalta' || nakyma === 'kala') ? 'inline-flex' : 'none';
