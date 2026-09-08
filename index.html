@@ -122,7 +122,7 @@ nav button.on{color:var(--sky)}
 <body>
 
 <header>
-  <div class="brand">Trolling<em>Pro</em> 2 <span style="font-size:10px;color:var(--ink-faint);font-weight:400">v5.2</span></div>
+  <div class="brand">Trolling<em>Pro</em> 2 <span style="font-size:10px;color:var(--ink-faint);font-weight:400">v5.3</span></div>
   <div id="gpsChip" class="chip">GPS pois</div>
 </header>
 
@@ -1180,12 +1180,17 @@ function kalaProjektio(kam, p, W, H){
   const fx = kam.kohdeX - kam.x, fy = kam.kohdeY - kam.y, fz = kam.kohdeZ - kam.z;
   const fl = Math.hypot(fx, fy, fz);
   const F = [fx/fl, fy/fl, fz/fl];
-  // Oikea käsi: ylös on -z (pinta ylöspäin)
-  const up = [0, 0, -1];
-  const R = [F[1]*up[2]-F[2]*up[1], F[2]*up[0]-F[0]*up[2], F[0]*up[1]-F[1]*up[0]];
+  // KORJATTU 5.9.2026: ristitulon järjestys oli väärin päin, jolloin koko
+  // näkymä PEILAUTUI vaakasuunnassa. Takaa katsottuna paapuuri näkyi oikealla
+  // ja tyyrpuuri vasemmalla — juuri toisin päin kuin veneessä.
+  //
+  // Oikea järjestys: R = up × F (kameran oikea), U = F × R (kameran ylös).
+  // Aiemmin oli R = F × up, joka antaa vastavektorin.
+  const up = [0, 0, -1];                    // pinta ylöspäin ruudulla
+  const R = [up[1]*F[2]-up[2]*F[1], up[2]*F[0]-up[0]*F[2], up[0]*F[1]-up[1]*F[0]];
   const rl = Math.hypot(R[0],R[1],R[2]) || 1;
   const Rn = [R[0]/rl, R[1]/rl, R[2]/rl];
-  const U = [Rn[1]*F[2]-Rn[2]*F[1], Rn[2]*F[0]-Rn[0]*F[2], Rn[0]*F[1]-Rn[1]*F[0]];
+  const U = [F[1]*Rn[2]-F[2]*Rn[1], F[2]*Rn[0]-F[0]*Rn[2], F[0]*Rn[1]-F[1]*Rn[0]];
 
   const d = [p.x - kam.x, p.y - kam.y, p.z - kam.z];
   const syvyysK = d[0]*F[0] + d[1]*F[1] + d[2]*F[2];
