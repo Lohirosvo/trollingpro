@@ -122,7 +122,7 @@ nav button.on{color:var(--sky)}
 <body>
 
 <header>
-  <div class="brand">Trolling<em>Pro</em> 2 <span style="font-size:10px;color:var(--ink-faint);font-weight:400">v5.6</span></div>
+  <div class="brand">Trolling<em>Pro</em> 2 <span style="font-size:10px;color:var(--ink-faint);font-weight:400">v5.7</span></div>
   <div id="gpsChip" class="chip">GPS pois</div>
 </header>
 
@@ -1275,6 +1275,35 @@ function boatSVG(){
   </g>`;
 }
 
+/* HOUKUTTIMEN KUVAKE — salmiakki, jotta se erottuu uistimesta ja painosta
+   yhdellä silmäyksellä. Lisätty 9.9.2026. */
+function attrIcon(x, y, color){
+  const r = 6;
+  return `<path d="M${x},${y-r} L${x+r*0.7},${y} L${x},${y+r} L${x-r*0.7},${y} Z"
+            fill="${color}" stroke="#04121a" stroke-width="1.1" opacity=".95"/>`;
+}
+
+/* Houkuttimen paikka siimalla: tapsin pituuden verran uistimesta VENETTÄ KOHTI,
+   mitattuna siimaa pitkin eikä suoraa viivaa. pts[0] on uistin ja viimeinen piste
+   vavan kärki, joten kuljetaan taulukkoa eteenpäin ja kerätään kaarenpituutta.
+   Palauttaa null jos houkutinta ei ole tai tapsi on pidempi kuin koko siima. */
+function attrPaikka(pts, lure){
+  if(!lure || !lure.attr || !pts || pts.length < 2) return null;
+  const tapsi = Math.max(0, (lure.attrLeader || 100)/100);   // cm -> m
+  if(tapsi <= 0) return null;
+  let matka = 0;
+  for(let i=1;i<pts.length;i++){
+    const dx = pts[i][0]-pts[i-1][0], dy = pts[i][1]-pts[i-1][1];
+    const seg = Math.sqrt(dx*dx + dy*dy);
+    if(matka + seg >= tapsi){
+      const t = seg > 0 ? (tapsi - matka)/seg : 0;
+      return { x: pts[i-1][0] + dx*t, y: pts[i-1][1] + dy*t };
+    }
+    matka += seg;
+  }
+  return null;   // tapsi pidempi kuin siima — ei piirretä mitään
+}
+
 function lureIcon(x, y, ang, color, type){
   const r = `rotate(${ang.toFixed(1)} ${x} ${y})`;
   if(type === 'spoon')
@@ -1379,6 +1408,7 @@ function drawFish(){
       const sivu = diverinSivu(side, s);
       K.push({ x:p.x + sivu, y:p.y - s.run, z:s.depth, vari:colorOf(side,i),
                nimi:lureById(rod.lureId).name, tyyppi:lureById(rod.lureId).type,
+               lure:lureById(rod.lureId),
                kx:p.x, ky:p.y, kz:0, nopeus:v2, tapa:p.tapa, rod:rod,
                valip: rod.diver && s.kuulaSyvyys !== undefined
                  ? { x:p.x + sivu, y:p.y - s.kuulaRun, z:s.kuulaSyvyys } : null });
@@ -1398,6 +1428,7 @@ function drawFish(){
       const pk = takilaUistimenPaikka(vp, lureById(u.lureId), u.vapFt||0, 0.35, v2);
       K.push({ x:p.x, y:p.y-pk.run, z:pk.depth, vari:vari,
                nimi:lureById(u.lureId).name, tyyppi:lureById(u.lureId).type,
+               lure:lureById(u.lureId),
                kx:p.x, ky:p.y-vp.run, kz:vp.depth, nopeus:v2 });
     });
   });
@@ -1559,6 +1590,21 @@ function drawFish(){
               stroke="${k.vari}" stroke-width="1" stroke-dasharray="3 4" stroke-opacity=".35"/>`;
     }
     if(o.vp) g += diverIcon(o.vp.x, o.vp.y, k.vari);
+    // HOUKUTIN kolmiulotteisesti: siirrytään tapsin verran vieheestä siimaa
+    // pitkin edelliseen pisteeseen (vapa, tai diverin kohdalla diver) päin.
+    if(k.lure && k.lure.attr){
+      const edel = o.vp ? k.valip : {x:k.kx, y:k.ky, z:k.kz};
+      if(edel){
+        const dx = edel.x-k.x, dy = edel.y-k.y, dz = edel.z-k.z;
+        const pit = Math.sqrt(dx*dx+dy*dy+dz*dz);
+        const tapsi = (k.lure.attrLeader || 100)/100;
+        if(pit > tapsi && tapsi > 0){
+          const t = tapsi/pit;
+          const ap = kalaProjektio(kam, {x:k.x+dx*t, y:k.y+dy*t, z:k.z+dz*t}, W, H);
+          if(ap) g += attrIcon(ap.x, ap.y, k.vari);
+        }
+      }
+    }
     if(k.kuula){
       g += `<circle cx="${p.x.toFixed(1)}" cy="${p.y.toFixed(1)}" r="${(r*0.75).toFixed(1)}"
               fill="#9aa7ad" stroke="#04121a" stroke-width="1.2"/>`;
@@ -1804,7 +1850,7 @@ function drawTop(){
       // samaan riviin kuin sivuvavat, eikä levitys näkynyt lainkaan.
       const sivu = diverinSivu(side, s);
       K.push({ x:p.x + sivu, y:p.y - s.run, syvyys:s.depth, vari:colorOf(side,i),
-               nimi:lureById(rod.lureId).name, tapa:p.tapa,
+               nimi:lureById(rod.lureId).name, tapa:p.tapa, lure:lureById(rod.lureId),
                kiinnitysX:p.x, kiinnitysY:p.y, board:rod.board, boardOut:rod.boardOut });
     });
   });
@@ -1822,7 +1868,7 @@ function drawTop(){
       const vp = takilaVapauttaja(tk, ui*(tak.vali||TAKILA_VALI_FT));
       const pk = takilaUistimenPaikka(vp, lureById(u.lureId), u.vapFt||0, 0.35, speed);
       K.push({ x:p.x, y:p.y - pk.run, syvyys:pk.depth, vari:vari,
-               nimi:lureById(u.lureId).name, tapa:'takilauistin',
+               nimi:lureById(u.lureId).name, tapa:'takilauistin', lure:lureById(u.lureId),
                kiinnitysX:p.x, kiinnitysY:p.y });
     });
   });
@@ -1901,6 +1947,17 @@ function drawTop(){
     const lx = X(k.x), ly = Y(k.y);
     g += `<line x1="${kx.toFixed(1)}" y1="${ky.toFixed(1)}" x2="${lx.toFixed(1)}" y2="${ly.toFixed(1)}"
             stroke="${k.vari}" stroke-width="1.4" stroke-opacity=".75"/>`;
+    // HOUKUTIN: tapsin verran uistimesta kiinnityspistettä kohti. Ylhäältä
+    // katsottuna siima on suora, joten riittää siirtyä vaakaetäisyyden verran.
+    if(k.lure && k.lure.attr){
+      const dx = kx - lx, dy = ky - ly;
+      const pit = Math.sqrt(dx*dx + dy*dy);
+      const tapsiPx = ((k.lure.attrLeader || 100)/100) * px;
+      if(pit > tapsiPx && tapsiPx > 0){
+        const t = tapsiPx/pit;
+        g += attrIcon(lx + dx*t, ly + dy*t, k.vari);
+      }
+    }
     if(k.tapa === 'kuula'){
       g += `<circle cx="${lx.toFixed(1)}" cy="${ly.toFixed(1)}" r="5" fill="#8f9aa1" stroke="#04121a" stroke-width="1"/>`;
     } else {
@@ -2096,6 +2153,11 @@ function drawProfile(){
                 return X.toFixed(1)+','+Y.toFixed(1);
               }).join(' ')}" fill="none" stroke="${vari}" stroke-width="1.3" stroke-opacity=".7"/>`;
         if(ly <= YMAXT && lx >= X0){
+          const apT = attrPaikka(pk.oma.pts, lu);
+          if(apT){
+            const ax = lx + (pk.oma.run - apT.x)*PXM, ay = ly - (pk.oma.depth - apT.y)*PXM;
+            if(ax >= X0 && ay <= YMAXT) g += attrIcon(ax, ay, vari);
+          }
           g += lureIcon(lx, ly, 0, vari, lu.type);
           g += `<text x="${lx}" y="${ly - 11}" text-anchor="middle" font-size="13" font-weight="700" fill="${vari}">${fmt(pk.depth)} m</text>`;
         }
@@ -2145,6 +2207,11 @@ function drawProfile(){
     if(deepOff){
       g += `<text x="${Math.max(X0+40,lx)}" y="${lyc+4}" text-anchor="middle" font-size="15" font-weight="700" fill="${it.color}">▼ ${fmt(it.s.depth)} m</text>`;
     }else if(!clipped){
+      const ap = attrPaikka(pts, it.lure);
+      if(ap){
+        const ax = tx - (it.s.run - ap.x)*PXM, ay = SURF + (it.s.depth - ap.y)*PXM;
+        if(ax >= X0 && ay <= YMAX) g += attrIcon(ax, ay, it.color);
+      }
       g += it.rod.diver ? diverIcon(lx, ly, it.color)
                         : lureIcon(lx, ly, 0, it.color, it.lure.type);
       g += `<text x="${lx}" y="${ly-11}" text-anchor="middle" font-size="15" font-weight="700" fill="${it.color}">${fmt(it.s.depth)} m</text>`;
