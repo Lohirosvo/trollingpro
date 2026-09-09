@@ -122,7 +122,7 @@ nav button.on{color:var(--sky)}
 <body>
 
 <header>
-  <div class="brand">Trolling<em>Pro</em> 2 <span style="font-size:10px;color:var(--ink-faint);font-weight:400">v5.7</span></div>
+  <div class="brand">Trolling<em>Pro</em> 2 <span style="font-size:10px;color:var(--ink-faint);font-weight:400">v5.9</span></div>
   <div id="gpsChip" class="chip">GPS pois</div>
 </header>
 
@@ -373,6 +373,31 @@ nav button.on{color:var(--sky)}
         <div class="row"><div><div class="lb">Kellunta</div><div class="sub">vaikuttaa siihen, miten uistin käyttäytyy hitaassa vedossa</div></div><div id="luBuoy" class="num"></div></div>
         <div class="row"><div><div class="lb">Oma paino</div><div class="sub">uistimen paino ilmassa</div></div><div class="num"><input id="luW" type="number" value="20" step="1" min="1"><span>g</span></div></div>
         <div class="row"><div><div class="lb">Uintisyvyys</div><div class="sub">valmistajan lukema pitkällä siimalla, ilman painoa</div></div><div class="num"><input id="luD" type="number" value="2.5" step="0.1" min="0"><span>m</span></div></div>
+        <!-- VÄRI — lisätty 9.9.2026. HK Varma jäsentää värinsä pinnan mukaan, ja
+             pinta on se mitä valofysiikka osaa käsitellä: heijastavuus ja välke.
+             Koodi ja nimi ovat vapaata tekstiä, koska valmistajien numerot eivät
+             noudata mitään yhteistä logiikkaa. -->
+        <div class="row">
+          <div><div class="lb">Värikoodi</div><div class="sub">esim. 202</div></div>
+          <div class="num"><input id="luVariKoodi" type="text" style="width:80px;text-align:left" value=""></div>
+        </div>
+        <div class="row">
+          <div><div class="lb">Värin nimi</div></div>
+          <div class="num"><input id="luVariNimi" type="text" style="width:150px;text-align:left" value=""></div>
+        </div>
+        <div class="row">
+          <div><div class="lb">Pinta</div><div class="sub">ratkaisee välkkeen</div></div>
+          <div class="num"><select id="luPinta">
+            <option value="">—</option>
+            <option value="kromi">Kromi</option>
+            <option value="hile">Hile</option>
+            <option value="hologrammi">Hologrammiteippi</option>
+            <option value="tinapaperi">Tinapaperi</option>
+            <option value="maali">Maali</option>
+            <option value="muu">Muu</option>
+          </select></div>
+        </div>
+
         <!-- HOUKUTIN ALKAA — lisätty 9.9.2026. Paino ja vastus menevät
              syvyyslaskentaan omina voiminaan, ks. attrNet ja attrDrag. -->
         <div class="row">
@@ -2472,6 +2497,21 @@ function setUistimia(i,n){
 function lisaaTakila(){ if(takilat.length < 6){ takilat.push(oletusTakila()); renderAll(); } }
 function poistaTakila(){ if(takilat.length > 2){ takilat.pop(); renderAll(); } }
 
+/* Värin lyhyt esitys uistinlistaan. Väri tallennetaan tänne, mutta väriehdotus
+   tehdään uistelututkan puolella: se tarvitsee paikallistietoa (näkösyvyys,
+   veden lämpötila, omat saaliit), jota TrollingProlla ei ole eikä kuulukaan
+   olla. Rajapinta niiden välillä on ihminen: luet syvyyden täältä ja asetat
+   sen uistelututkan viehevalinnan syvyysliukuun. */
+function variTeksti(l){
+  if(!l) return '';
+  const osat = [];
+  if(l.variKoodi) osat.push(l.variKoodi);
+  if(l.variNimi)  osat.push(l.variNimi);
+  if(l.pinta)     osat.push(PINTA_NIMI[l.pinta] || l.pinta);
+  return osat.join(' ');
+}
+const PINTA_NIMI = { kromi:'kromi', hile:'hile', hologrammi:'hologrammi',
+                     tinapaperi:'tinapaperi', maali:'maali', muu:'muu' };
 function attrNimi(a){
   return {dodger0:'Dodger 0', dodger2:'Dodger 2/0', dodger3:'Dodger 3/0',
           dodger4:'Dodger 4/0', vk:'VK-levy', other:'houkutin'}[a] || a;
@@ -2479,7 +2519,7 @@ function attrNimi(a){
 function renderLures(){
   document.getElementById('lureList').innerHTML = lures.map((l,i)=>`
     <div class="row"><div><div class="lb">${l.name}</div>
-      <div class="sub">${l.weight} g · ${l.buoy==='susp'?'suspending':(l.buoy==='sink'?'uppoava':'kelluva')} · ${l.curve ? 'sukelluskäyrä' : (l.dive>0 ? 'uinti '+fmt(l.dive)+' m' : 'ei omaa uintia')}${(l.dragMul||1)!==1?' · vastus ×'+fmt(l.dragMul,2):''}${l.attr?' · '+attrNimi(l.attr)+(l.attrW>0?' '+l.attrW+' g':'')+' · tapsi '+l.attrLeader+' cm':''}</div></div>
+      <div class="sub">${l.weight} g · ${l.buoy==='susp'?'suspending':(l.buoy==='sink'?'uppoava':'kelluva')} · ${l.curve ? 'sukelluskäyrä' : (l.dive>0 ? 'uinti '+fmt(l.dive)+' m' : 'ei omaa uintia')}${(l.dragMul||1)!==1?' · vastus ×'+fmt(l.dragMul,2):''}${variTeksti(l)?' · '+variTeksti(l):''}${l.attr?' · '+attrNimi(l.attr)+(l.attrW>0?' '+l.attrW+' g':'')+' · tapsi '+l.attrLeader+' cm':''}</div></div>
       <div class="num"><button class="btn sm ghost" onclick="openLureSheet(${i})">Muokkaa</button>
       <button class="btn sm ghost" style="color:var(--port)" onclick="delLure(${i})">Poista</button></div></div>`).join('');
 }
@@ -2736,7 +2776,7 @@ function commitRod(){
 
 function openLureSheet(idx){
   sheetLureIdx = (idx===undefined) ? null : idx;
-  const l = sheetLureIdx===null ? {name:'',type:'wobbler',buoy:'float',weight:20,dive:2.5,attr:'',attrW:0,attrLeader:100} : lures[sheetLureIdx];
+  const l = sheetLureIdx===null ? {name:'',type:'wobbler',buoy:'float',weight:20,dive:2.5,attr:'',attrW:0,attrLeader:100,variKoodi:'',variNimi:'',pinta:''} : lures[sheetLureIdx];
   sheetType = l.type; sheetBuoy = l.buoy || 'float';
   document.getElementById('lureSheetTitle').textContent = sheetLureIdx===null ? 'Lisää uistin' : 'Muokkaa uistinta';
   document.getElementById('luName').value = l.name;
@@ -2750,6 +2790,9 @@ function openLureSheet(idx){
      <button class="pill" data-b="sink" onclick="setLureBuoy('sink')">Uppoava</button>`;
   setLureType(sheetType); setLureBuoy(sheetBuoy);
   // HOUKUTTIMEN LATAUS. Vanhoilta uistimilta kentät puuttuvat, siksi || -oletukset.
+  document.getElementById('luVariKoodi').value = l.variKoodi || '';
+  document.getElementById('luVariNimi').value  = l.variNimi || '';
+  document.getElementById('luPinta').value     = l.pinta || '';
   document.getElementById('luAttr').value = l.attr || '';
   document.getElementById('luAttrW').value = l.attrW || 0;
   document.getElementById('luAttrLeader').value = l.attrLeader || 100;
@@ -2797,6 +2840,9 @@ function commitLure(){
     weight: parseFloat(document.getElementById('luW').value)||15,
     dive: sheetType==='spoon' ? 0 : (parseFloat(document.getElementById('luD').value)||0),
     curve: sheetLureIdx===null ? null : lures[sheetLureIdx].curve,
+    variKoodi: document.getElementById('luVariKoodi').value.trim(),
+    variNimi:  document.getElementById('luVariNimi').value.trim(),
+    pinta:     document.getElementById('luPinta').value,
     // HOUKUTTIMEN TALLENNUS. solve() lukee nämä attrNetin ja attrDragin kautta.
     attr: document.getElementById('luAttr').value,
     attrW: parseFloat(document.getElementById('luAttrW').value)||0,
