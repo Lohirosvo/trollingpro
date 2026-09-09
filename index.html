@@ -122,7 +122,7 @@ nav button.on{color:var(--sky)}
 <body>
 
 <header>
-  <div class="brand">Trolling<em>Pro</em> 2 <span style="font-size:10px;color:var(--ink-faint);font-weight:400">v5.3</span></div>
+  <div class="brand">Trolling<em>Pro</em> 2 <span style="font-size:10px;color:var(--ink-faint);font-weight:400">v5.4</span></div>
   <div id="gpsChip" class="chip">GPS pois</div>
 </header>
 
@@ -570,6 +570,50 @@ function solve(lure, lengthFt, sinkerG, lineDiaMm, speedKmH){
 */
 const SD_BASE_RATIO = { 0: 2.2, 1: 2.6, 2: 3.0, 3: 3.6 };
 
+/* ------------------------------------------------------------
+   SIVUKULMA — lisätty 9.9.2026
+   ------------------------------------------------------------
+   PUUTE JOKA KORJATTIIN: malli vei diverin vain alas ja taakse. Oikeasti
+   Dipsy on kiekko, joka planeeraa myös ULOS SIVULLE — juuri siksi asetukset
+   0-3 ovat olemassa. Asetus 0 menee suoraan alas, ja 1-2-3 kääntävät kiekkoa
+   yhä enemmän sivulle. Sivulle mennessä syvyys jää pienemmäksi. Sitä varten
+   divereitä ylipäätään ajetaan eri asetuksilla: ne levittävät siimat.
+
+   SIVUKULMA EI OLE UUSI VAPAA PARAMETRI. Painolevyn siirto kiertää
+   planeerauspintaa, joten sama voima vain osoittaa eri suuntaan: pystysuora
+   osuus pienenee ja sivuttainen kasvaa. Siitä seuraa, että kulma sisältyy
+   jo niihin syvyyssuhteisiin jotka ovat yllä:
+
+       syvyys(s) ∝ cos φ(s)   →   φ(s) = arccos( suhde(0) / suhde(s) )
+
+       0 → 0°     1 → 32°     2 → 43°     3 → 52°
+
+   Siima- ja nopeuskertoimet kertovat KAIKKI asetukset samalla luvulla, joten
+   ne supistuvat osamäärästä pois. Kulma ei siksi riipu siimasta eikä vauhdista
+   — vain asetuksesta. Se on mallin oma seuraus, ei erillinen viritys.
+
+   TÄRKEÄ SÄÄNTÖ YLLÄPIDOLLE: jos oma havainto sanoo että sivulle menee eri
+   verran, korjaa SD_BASE_RATIO — ÄLÄ lisää tähän omaa kerrointa. Muuten
+   syvyys ja sivusuunta eivät enää tule samasta voimasta, ja malli alkaa olla
+   kahta mieltä itsestään.
+
+   KULMAT OVAT JOHDETTUJA, EIVÄT MITATTUJA. Julkaistua mittaustaulukkoa
+   sivupoikkeamalle ei ole; syvyyssuhteet sen sijaan on kalibroitu. */
+function sdSideAngleRad(setting){
+  const b  = SD_BASE_RATIO[setting] !== undefined ? SD_BASE_RATIO[setting] : SD_BASE_RATIO[0];
+  const r0 = SD_BASE_RATIO[0];
+  const c  = Math.min(1, Math.max(0, b > 0 ? r0/b : 1));
+  return Math.acos(c);
+}
+function sdSideAngleDeg(setting){ return sdSideAngleRad(setting)*180/Math.PI; }
+
+/* Diverin sivusiirtymä etumerkillä: vasen puoli negatiiviseen suuntaan.
+   Käytetään ylänäkymässä ja lintuperspektiivissä, joissa x on sivusuunta. */
+function diverinSivu(side, s){
+  if(!s || !s.side) return 0;
+  return (side === 'left' ? -1 : 1) * s.side;
+}
+
 function sdLineTypeFactor(type){
   // Kuitu ei veny ja on ohuempi vastaavalla lujuudella → vähemmän vastusta → syvemmälle.
   return type === 'kuitu' ? 0.85 : 1.0;
@@ -597,14 +641,24 @@ function sdRatio(setting, lineType, dia, kmh){
    diver vetää niin voimakkaasti, että siima kiristyy suoraksi. Siksi pts on
    kaksi pistettä eikä integroitu käyrä.
 
-   SIVUSUUNTA: diver menee myös sivulle, mutta tämä on sivukuva — sivusuunta
-   ei näy siinä. Vaakaetäisyys on siksi geometrinen projektio, ja todellinen
-   etäisyys suoraan takana on tätä pienempi. Merkitty myös käyttöliittymään. */
+   SIVUSUUNTA — korjattu 9.9.2026. Aiemmin koko vaakaetäisyys tulkittiin
+   taaksepäin, mikä on väärin: diver on kolmessa ulottuvuudessa. Vaakaetäisyys
+   jaetaan nyt sivukulman φ mukaan:
+
+       taakse = vaaka · cos φ        sivulle = vaaka · sin φ
+
+   Syvyys ei muutu lainkaan — se tuli ja tulee edelleen suhdeluvusta. Muuttuu
+   vain se, MISSÄ diver on: asetuksella 3 se on selvästi lähempänä venettä
+   takasuunnassa ja kaukana sivulla. Juuri se ratkaisee mahtuuko se plaanarin
+   sisäpuolelle. */
 function solveDiver(rod, speedKmH){
   const L = Math.max(0, rod.ft)*FT;
   const ratio = sdRatio(rod.dSetting, rod.dLineType || 'mono', rod.dia, speedKmH);
   const dSyv = Math.min(L, ratio > 0 ? L/ratio : 0);
-  const dRun = Math.sqrt(Math.max(0, L*L - dSyv*dSyv));
+  const vaaka = Math.sqrt(Math.max(0, L*L - dSyv*dSyv));
+  const phi  = sdSideAngleRad(rod.dSetting);
+  const dRun  = vaaka*Math.cos(phi);    // suoraan takana
+  const dSivu = vaaka*Math.sin(phi);    // ulos sivulle
 
   // PERUKE DIVERIN TAAKSE — lisätty 5.9.2026, 0-40 jalkaa.
   // Diveri ja viehe eivät ole samassa pisteessä: viehe roikkuu perukkeen
@@ -623,7 +677,10 @@ function solveDiver(rod, speedKmH){
     pts = [[0,0],[dRun,dSyv],[run,depth]];
   }
   const ang = L > 0 ? Math.acos(Math.min(1, dSyv/L))*180/Math.PI : 90;
+  // PERUKE EI VIE SIVULLE: viehe roikkuu virrassa diverin takana, eli
+  // suunnilleen veneen suuntaan. Sivusiirtymä on siksi sama kuin diverillä.
   return { depth:depth, run:run, angle:ang, pts:pts, L:L, ratio:ratio, diver:true,
+           side:dSivu, sideDeg:sdSideAngleDeg(rod.dSetting),
            kuulaSyvyys:dSyv, kuulaRun:dRun, perukeFt:pFt };
 }
 
@@ -1237,11 +1294,13 @@ function drawFish(){
       const p = vavanSijainti(side, rod, i);
       const v2 = kNopeus(p.x);
       const s = solveRod(rod, v2);
-      K.push({ x:p.x, y:p.y - s.run, z:s.depth, vari:colorOf(side,i),
+      // Sama korjaus kuin ylänäkymässä: diver planeeraa sivulle.
+      const sivu = diverinSivu(side, s);
+      K.push({ x:p.x + sivu, y:p.y - s.run, z:s.depth, vari:colorOf(side,i),
                nimi:lureById(rod.lureId).name, tyyppi:lureById(rod.lureId).type,
                kx:p.x, ky:p.y, kz:0, nopeus:v2, tapa:p.tapa, rod:rod,
                valip: rod.diver && s.kuulaSyvyys !== undefined
-                 ? { x:p.x, y:p.y - s.kuulaRun, z:s.kuulaSyvyys } : null });
+                 ? { x:p.x + sivu, y:p.y - s.kuulaRun, z:s.kuulaSyvyys } : null });
     });
   });
   const sij = takilaSijainnit(takilat.length);
@@ -1659,7 +1718,11 @@ function drawTop(){
       // vieheet päätyivät samalle etäisyydelle vaikka ne on kiinnitetty eri
       // kohtiin 15° taakse kulkevaa selkäsiimaa. Kuvassa ne olivat suorassa
       // rivissä — todellisuudessa uloin on selvästi kauempana takana.
-      K.push({ x:p.x, y:p.y - s.run, syvyys:s.depth, vari:colorOf(side,i),
+      // KORJATTU 9.9.2026: diver ei kulje suoraan vavan takana vaan planeeraa
+      // ulos sivulle asetuksen mukaan. Ilman tätä kaikki Dipsyt piirtyivät
+      // samaan riviin kuin sivuvavat, eikä levitys näkynyt lainkaan.
+      const sivu = diverinSivu(side, s);
+      K.push({ x:p.x + sivu, y:p.y - s.run, syvyys:s.depth, vari:colorOf(side,i),
                nimi:lureById(rod.lureId).name, tapa:p.tapa,
                kiinnitysX:p.x, kiinnitysY:p.y, board:rod.board, boardOut:rod.boardOut });
     });
@@ -2082,13 +2145,36 @@ function renderRods(items){
             : it.rod.keski ? 'potkurivirta · '+it.rod.w+' g'
             : it.rod.board ? 'plaanari'
             : 'sivuvapa · '+it.rod.w+' g'} · ⌀${fmt(it.rod.dia,2)} · ${Math.round(it.s.run)} m perässä${
-            it.rod.diver ? ' (myös sivulle)' : ''}</div>
+            it.rod.diver ? ' · '+Math.round(it.s.side)+' m sivulle ('+Math.round(it.s.sideDeg)+'°)' : ''}</div>
         <div class="dp" style="color:${it.color}">${fmt(it.s.depth)} m</div>
         ${deep?'<div class="alert">Pohjan tuntumassa</div>':''}
       </div>`;
     }).join('');
   });
 }
+/* MAHTUUKO DIPSY PLAANARIN SISÄPUOLELLE — lisätty 9.9.2026.
+   Tämä on se käytännön syy, jonka takia sivusuunta piti ylipäätään laskea.
+   Selkäsiiman lähin uistin on sisin, ja Dipsyjen kuuluu kulkea sen sisällä.
+   Kun sivusiirtymä on nyt tiedossa, sen voi tarkistaa lukuna eikä silmällä.
+
+   Verrataan vain sivusuuntaa, ei täyttä kolmiulotteista rataa: Dipsy on
+   metrejä syvemmällä ja selvästi kauempana takana kuin plaanarin sisin,
+   joten siimat eivät kohtaa vaikka x-arvot menisivät ristiin. Varoitus on
+   siis muistutus levityksen järjestyksestä, ei törmäysennuste. */
+function diverVaroitus(side, sisinM){
+  if(!(sisinM > 0)) return '';
+  const raja = VENE_LAITA + sisinM;
+  const osuvat = rods[side].filter(r=>r.diver).map(r=>{
+    const s = solveDiver(r, speed);
+    return { x: VENE_LAITA + SIVUVAPA_ULOS + s.side, set:r.dSetting };
+  }).filter(d => d.x > raja - 1);
+  if(!osuvat.length) return '';
+  const pahin = osuvat.reduce((a,b)=> b.x > a.x ? b : a);
+  return `<div style="font-size:10.5px;color:var(--warn);margin-top:3px">
+    ⚠ Dipsy ${pahin.set} planeeraa ${fmt(pahin.x)} m sivulle — sisin plaanariuistin on
+    ${fmt(raja)} m. Pienempi asetus tai lyhyempi siima pitää sen sisäpuolella.</div>`;
+}
+
 function renderPlaanarit(){
   const box = document.getElementById('plaanariTila');
   if(!box) return;
@@ -2112,6 +2198,7 @@ function renderPlaanarit(){
       </div>
       ${b.length > maxN ? `<div style="font-size:10.5px;color:var(--warn);margin-top:3px">
         ⚠ ${b.length} vapaa ei mahdu 50 m sisään tällä lähimmällä — mahtuu ${maxN}</div>` : ''}
+      ${diverVaroitus(side, et[et.length-1])}
     </div>`;
   }).join('');
   box.innerHTML = rivit;
@@ -2466,7 +2553,8 @@ function syncRodSheet(){
     } else if(sheetDiver){
       const pf = parseFloat((document.getElementById('rodPeruke')||{}).value)||0;
       eTapa.textContent = `Dipsy ${sheetDSetting}, ${sheetDLine==='kuitu'?'kuitu':'mono'}`
-        + (pf > 0 ? `, peruke ${pf} ft` : '') + ` · ${Math.round(s.run)} m perässä`;
+        + (pf > 0 ? `, peruke ${pf} ft` : '')
+        + ` · ${Math.round(s.run)} m perässä · ${Math.round(s.side)} m sivulle`;
     } else if(sheetKeski){
       eTapa.textContent = `potkurivirta, keskeltä · ${Math.round(s.run)} m perässä`;
     } else {
@@ -2651,14 +2739,20 @@ const OHJEET = {
       + 'Luhr Jensenin omaa taulukkoa EI käytetä, koska se pätee O-rengas '
       + 'paikallaan. Ilman rengasta diveri sukeltaa syvemmälle.\n\n'
       + 'Peruke 0–40 ft: viehe roikkuu diverin takana ja laskeutuu oman uintinsa '
-      + 'mukaan hieman syvemmälle.'
+      + 'mukaan hieman syvemmälle.\n\n'
+      + 'SIVUSUUNTA: Dipsy on kiekko, joka planeeraa myös ulos sivulle — juuri '
+      + 'siksi asetukset 0–3 ovat olemassa. 0 menee suoraan alas, ja mitä isompi '
+      + 'asetus, sitä kauemmas sivulle ja sitä matalampaan se jää. Kulma ei ole '
+      + 'erillinen viritys vaan seuraa suoraan syvyyssuhteista: 0°, 32°, 43°, 52°. '
+      + 'Kulmat ovat mallin johdoksia, eivät mittauksia — jos oma havainto sanoo '
+      + 'muuta, syvyyssuhteita on korjattava, ei kulmaa.'
   },
   nakymat: {
     otsikko: 'Näkymät',
     teksti: 'SIVULTA: syvyys ja etäisyys mittakaavassa 1:1. Paras kun haluat '
       + 'tietää mihin syvyyteen viehe menee.\n\n'
-      + 'YLHÄÄLTÄ: levitys. Näyttää plaanarit, kelkat ja kaarroksen. Paras kun '
-      + 'mietit mahtuuko kaarros tai osuvatko siimat toisiinsa.\n\n'
+      + 'YLHÄÄLTÄ: levitys. Näyttää plaanarit, kelkat, Dipsyjen sivusiirtymän ja '
+      + 'kaarroksen. Paras kun mietit mahtuuko kaarros tai osuvatko siimat toisiinsa.\n\n'
       + 'YLHÄÄLTÄ TAKAA: lintuperspektiivi. Plaanarit jätetään pois, koska ne ovat '
       + 'niin kaukana sivulla että muu kutistuisi pisteiksi. Suunta-säätimellä voi '
       + 'kiertää kameraa 360°.\n\n'
