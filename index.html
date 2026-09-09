@@ -122,7 +122,7 @@ nav button.on{color:var(--sky)}
 <body>
 
 <header>
-  <div class="brand">Trolling<em>Pro</em> 2 <span style="font-size:10px;color:var(--ink-faint);font-weight:400">v5.4</span></div>
+  <div class="brand">Trolling<em>Pro</em> 2 <span style="font-size:10px;color:var(--ink-faint);font-weight:400">v5.6</span></div>
   <div id="gpsChip" class="chip">GPS pois</div>
 </header>
 
@@ -297,6 +297,8 @@ nav button.on{color:var(--sky)}
         <div class="num"><input id="cfgCdaW" type="number" value="0.0035" step="0.0005" min="0.0002" oninput="setCfg('cdaWobbler',this.value)"><span>m²</span></div></div>
       <div class="row"><div><div class="lb">Lusikan vastuspinta</div><div class="sub">Cd·A</div></div>
         <div class="num"><input id="cfgCdaS" type="number" value="0.0018" step="0.0005" min="0.0001" oninput="setCfg('cdaSpoon',this.value)"><span>m²</span></div></div>
+      <div class="row"><div><div class="lb">Houkuttimen vastus</div><div class="sub">dodgerin Cd·A on arvaus, tämä kerroin virittää sen</div></div>
+        <div class="num"><input id="cfgAttr" type="number" value="1.00" step="0.05" min="0.1" max="3" oninput="setCfg('attrDragMul',this.value)"><span>×</span></div></div>
       <div class="row"><div><div class="lb">Kelluvan vaapun noste</div><div class="sub">osuus uistimen omasta painosta; suurempi luku nostaa uistimen pintaan hitaassa vedossa</div></div>
         <div class="num"><input id="cfgBuoy" type="number" value="10" step="1" min="0" max="60" oninput="setCfg('buoyFloat', -this.value/100)"><span>%</span></div></div>
       <div class="row"><div><div class="lb">Vertailunopeus</div><div class="sub">nopeus, jolla käyrä on mitattu; kelluvalla vaapulla tällä on väliä</div></div>
@@ -371,6 +373,29 @@ nav button.on{color:var(--sky)}
         <div class="row"><div><div class="lb">Kellunta</div><div class="sub">vaikuttaa siihen, miten uistin käyttäytyy hitaassa vedossa</div></div><div id="luBuoy" class="num"></div></div>
         <div class="row"><div><div class="lb">Oma paino</div><div class="sub">uistimen paino ilmassa</div></div><div class="num"><input id="luW" type="number" value="20" step="1" min="1"><span>g</span></div></div>
         <div class="row"><div><div class="lb">Uintisyvyys</div><div class="sub">valmistajan lukema pitkällä siimalla, ilman painoa</div></div><div class="num"><input id="luD" type="number" value="2.5" step="0.1" min="0"><span>m</span></div></div>
+        <!-- HOUKUTIN ALKAA — lisätty 9.9.2026. Paino ja vastus menevät
+             syvyyslaskentaan omina voiminaan, ks. attrNet ja attrDrag. -->
+        <div class="row">
+          <div><div class="lb">Houkutin</div><div class="sub">Uistimen eteen</div></div>
+          <div class="num"><select id="luAttr" onchange="paivitaAttr()">
+            <option value="">Ei</option>
+            <option value="dodger0">Dodger 0, 8" (50 g)</option>
+            <option value="dodger2">Dodger 2/0, 6" (44 g)</option>
+            <option value="dodger3">Dodger 3/0, 5" (35 g)</option>
+            <option value="dodger4">Dodger 4/0, 4" (26 g)</option>
+            <option value="vk">VK-levy (0 g)</option>
+            <option value="other">Muu</option>
+          </select></div>
+        </div>
+        <div class="row" id="luAttrWRow" style="display:none">
+          <div><div class="lb">Houkuttimen paino</div><div class="sub">ilmassa</div></div>
+          <div class="num"><input id="luAttrW" type="number" value="0" step="1" min="0"><span>g</span></div>
+        </div>
+        <div class="row" id="luAttrLRow" style="display:none">
+          <div><div class="lb">Tapsin pituus</div><div class="sub">houkuttimesta uistimeen</div></div>
+          <div class="num"><input id="luAttrLeader" type="number" value="100" step="10" min="10"><span>cm</span></div>
+        </div>
+        <!-- HOUKUTIN PÄÄTTYY -->
       </div>
       <p class="hint">Lusikalle ja raksille jätä uintisyvyys nollaan – ne uppoavat omalla painollaan, eivät sukella lipan avulla.</p>
     </div>
@@ -449,6 +474,8 @@ const DEFAULT_CFG = {
   refSpeed: 4.0,        // km/h ~ 2,5 mph, Precision Trolling -datan vakionopeus
   refLineDia: 0.343,    // 10 lb Berkley XT = 0.0135" = 0.343 mm
   refLength: 40,
+  attrDragMul: 1.00,    // houkuttimen vastuksen viritys, ks. attrDrag()
+  rhoAttr: 8500,        // kg/m3, messinki/teräs — houkuttimen nettopainoa varten
   calib: 1.00, defDia: 0.45, defFt: 100
 };
 let CFG = Object.assign({}, DEFAULT_CFG);
@@ -492,6 +519,56 @@ function sinkerDrag(g, v){
   const r = Math.cbrt(3*(g/1000/RHO_PB)/(4*Math.PI));
   return 0.5*RHO_W*CFG.cdSinker*Math.PI*r*r*v*v;
 }
+/* ============================================================
+   HOUKUTIN (dodger / VK-levy) — lisätty 9.9.2026
+   ============================================================
+   MIKSI EI UISTIMEN PAINOON: ensimmäinen ajatus oli lisätä houkuttimen paino
+   lure.weightiin. Se on väärin kahdesta syystä, ja molemmat vievät väärään
+   suuntaan:
+     1) lureNet kertoo painon kellunta-luokan kertoimella, joka kelluvalla
+        vaapulla on NEGATIIVINEN (-0,10). 50 g lisäystä ei siis painaisi
+        uistinta alas vaan tekisi siitä 12 kertaa kelluvamman.
+     2) lureDrag skaalaa vastuksen painon potenssilla 2/3, joten vastus
+        viisinkertaistuisi vahingossa — oikeasta lopputuloksesta väärästä syystä.
+   Houkuttimella on siksi oma nettopaino ja oma vastus, kuten lyijypainolla.
+
+   MIKÄ TÄSSÄ ON MITATTUA JA MIKÄ ARVATTUA:
+     - Painot (26-50 g) ja koot ovat valmistajan lukemia. Muista että mitä
+       enemmän nollia, sitä PIENEMPI levy: 0 = 8", 4/0 = 4".
+     - Nettopaino on suoraa fysiikkaa: messingin tiheydellä vedessä jää noin
+       88 % kuivapainosta alaspäin.
+     - Cd*A ON ARVAUS. Se on johdettu levyn pinta-alasta olettaen, että vinossa
+       heiluva levy näyttää menosuuntaan noin kolmasosan pinnastaan ja että
+       litteän levyn Cd on ~1,2. Tätä ei ole mitattu. Jos oma havainto sanoo
+       muuta, säädä Malli-välilehden kerrointa — älä koske painoihin.
+
+   MITÄ MALLI EI HUOMIOI: tapsin pituus. Houkutin on tapsin verran uistimen
+   EDESSÄ, mutta sen voimat lisätään tässä siiman päähän. Metrin tapsi 30
+   metrin siimassa on kolmen prosentin virhe, eli pienempi kuin Cd*A:n arvaus.
+   Tapsi tallentuu ja piirtyy, mutta ei muuta syvyyttä. */
+const ATTR_CDA = {
+  dodger0: 0.0055,   // 8" x 2,25"
+  dodger2: 0.0036,   // 6" x 2"
+  dodger3: 0.0026,   // 5" x 1,75"
+  dodger4: 0.0015,   // 4" x 1,25"
+  vk:      0.0008    // pieni kirkas levy; koko ei tiedossa, tämä on karkein arvaus
+};
+function attrNet(lure){                       // N, + = alaspäin
+  const g = lure && lure.attr ? (lure.attrW||0) : 0;
+  return g<=0 ? 0 : g/1000*G*(1 - RHO_W/CFG.rhoAttr);
+}
+function attrDrag(lure, v){                   // N
+  if(!lure || !lure.attr) return 0;
+  let cda = ATTR_CDA[lure.attr];
+  if(cda === undefined){
+    // "Muu": arvio painosta, ankkuroituna 2/0-kokoon (44 g). Nolla painolla
+    // ei voi arvata pinta-alaa, joten käytetään pientä vakiota.
+    const g = lure.attrW||0;
+    cda = g>0 ? 0.0036*Math.pow(g/44, 2/3) : 0.0010;
+  }
+  return 0.5*RHO_W*cda*CFG.attrDragMul*v*v;
+}
+
 function curveDepth(ft, curve){
   if(ft<=0) return 0;
   let a = curve[0];
@@ -535,8 +612,11 @@ function solve(lure, lengthFt, sinkerG, lineDiaMm, speedKmH){
   const L = Math.max(0, lengthFt)*FT;
   const vR = CFG.refSpeed/3.6;
   const lip = lipForceRef(lure, lengthFt) * (vR>0 ? Math.pow(v/vR,2) : 0);
-  const Fv = sinkerNet(sinkerG) + lureNet(lure) + lip;
-  const Fh = sinkerDrag(sinkerG, v) + lureDrag(lure, v);
+  // Houkutin lisätään VAIN tänne, ei lipForceRefiin. Näin uistimen oma
+  // sukellusvoima pysyy kalibroituna valmistajan lukemaan ilman houkutinta,
+  // ja houkutin muuttaa vain tätä vetoa.
+  const Fv = sinkerNet(sinkerG) + lureNet(lure) + lip + attrNet(lure);
+  const Fh = sinkerDrag(sinkerG, v) + lureDrag(lure, v) + attrDrag(lure, v);
   const r = integrate(L, lineDiaMm/1000, v, Fv, Fh, 60);
   const k = CFG.calib;
   const depth = Math.min(L, r.depth*k);
@@ -1087,6 +1167,7 @@ function boot(){
   document.getElementById('cfgCdaW').value  = CFG.cdaWobbler;
   document.getElementById('cfgCdaS').value  = CFG.cdaSpoon;
   document.getElementById('cfgBuoy').value  = Math.round(-CFG.buoyFloat*100);
+  const eAttr = document.getElementById('cfgAttr'); if(eAttr) eAttr.value = fmt(CFG.attrDragMul,2);
   document.getElementById('cfgRefS').value  = CFG.refSpeed;
   document.getElementById('cfgRefD').value  = CFG.refLineDia;
   document.getElementById('cfgDia').value   = CFG.defDia;
@@ -2324,10 +2405,14 @@ function setUistimia(i,n){
 function lisaaTakila(){ if(takilat.length < 6){ takilat.push(oletusTakila()); renderAll(); } }
 function poistaTakila(){ if(takilat.length > 2){ takilat.pop(); renderAll(); } }
 
+function attrNimi(a){
+  return {dodger0:'Dodger 0', dodger2:'Dodger 2/0', dodger3:'Dodger 3/0',
+          dodger4:'Dodger 4/0', vk:'VK-levy', other:'houkutin'}[a] || a;
+}
 function renderLures(){
   document.getElementById('lureList').innerHTML = lures.map((l,i)=>`
     <div class="row"><div><div class="lb">${l.name}</div>
-      <div class="sub">${l.weight} g · ${l.buoy==='susp'?'suspending':(l.buoy==='sink'?'uppoava':'kelluva')} · ${l.curve ? 'sukelluskäyrä' : (l.dive>0 ? 'uinti '+fmt(l.dive)+' m' : 'ei omaa uintia')}${(l.dragMul||1)!==1?' · vastus ×'+fmt(l.dragMul,2):''}</div></div>
+      <div class="sub">${l.weight} g · ${l.buoy==='susp'?'suspending':(l.buoy==='sink'?'uppoava':'kelluva')} · ${l.curve ? 'sukelluskäyrä' : (l.dive>0 ? 'uinti '+fmt(l.dive)+' m' : 'ei omaa uintia')}${(l.dragMul||1)!==1?' · vastus ×'+fmt(l.dragMul,2):''}${l.attr?' · '+attrNimi(l.attr)+(l.attrW>0?' '+l.attrW+' g':'')+' · tapsi '+l.attrLeader+' cm':''}</div></div>
       <div class="num"><button class="btn sm ghost" onclick="openLureSheet(${i})">Muokkaa</button>
       <button class="btn sm ghost" style="color:var(--port)" onclick="delLure(${i})">Poista</button></div></div>`).join('');
 }
@@ -2584,7 +2669,7 @@ function commitRod(){
 
 function openLureSheet(idx){
   sheetLureIdx = (idx===undefined) ? null : idx;
-  const l = sheetLureIdx===null ? {name:'',type:'wobbler',buoy:'float',weight:20,dive:2.5} : lures[sheetLureIdx];
+  const l = sheetLureIdx===null ? {name:'',type:'wobbler',buoy:'float',weight:20,dive:2.5,attr:'',attrW:0,attrLeader:100} : lures[sheetLureIdx];
   sheetType = l.type; sheetBuoy = l.buoy || 'float';
   document.getElementById('lureSheetTitle').textContent = sheetLureIdx===null ? 'Lisää uistin' : 'Muokkaa uistinta';
   document.getElementById('luName').value = l.name;
@@ -2597,7 +2682,34 @@ function openLureSheet(idx){
      <button class="pill" data-b="susp" onclick="setLureBuoy('susp')">Suspending</button>
      <button class="pill" data-b="sink" onclick="setLureBuoy('sink')">Uppoava</button>`;
   setLureType(sheetType); setLureBuoy(sheetBuoy);
+  // HOUKUTTIMEN LATAUS. Vanhoilta uistimilta kentät puuttuvat, siksi || -oletukset.
+  document.getElementById('luAttr').value = l.attr || '';
+  document.getElementById('luAttrW').value = l.attrW || 0;
+  document.getElementById('luAttrLeader').value = l.attrLeader || 100;
+  paivitaAttr();
   document.getElementById('lureSheet').classList.add('on');
+}
+/* Houkuttimen valikon logiikka. Valmiille Dodger-koolle paino tulee automaattisesti
+   eikä sitä näytetä; "Muu" avaa painokentän. Tapsi näkyy aina kun houkutin on
+   valittu, myös VK-levyllä, koska levyn paikka siimalla riippuu tapsista vaikka
+   paino on nolla.
+   HUOM koon nimistä: mitä enemmän nollia, sitä PIENEMPI dodger. 0 = 8", 4/0 = 4".
+   Painot menevät siis oikeaan suuntaan tässä listassa. */
+function paivitaAttr(){
+  const val = document.getElementById('luAttr').value;
+  const wRow = document.getElementById('luAttrWRow'), lRow = document.getElementById('luAttrLRow');
+  const wInp = document.getElementById('luAttrW');
+  if(!val){
+    wRow.style.display = 'none'; lRow.style.display = 'none';
+  } else {
+    lRow.style.display = 'flex';
+    if(val === 'dodger4') wInp.value = 26;
+    else if(val === 'dodger3') wInp.value = 35;
+    else if(val === 'dodger2') wInp.value = 44;
+    else if(val === 'dodger0') wInp.value = 50;
+    else if(val === 'vk') wInp.value = 0;
+    wRow.style.display = (val === 'other') ? 'flex' : 'none';
+  }
 }
 function setLureType(t){
   sheetType = t;
@@ -2617,7 +2729,11 @@ function commitLure(){
     dragMul: sheetLureIdx===null ? 1 : (lures[sheetLureIdx].dragMul||1),
     weight: parseFloat(document.getElementById('luW').value)||15,
     dive: sheetType==='spoon' ? 0 : (parseFloat(document.getElementById('luD').value)||0),
-    curve: sheetLureIdx===null ? null : lures[sheetLureIdx].curve
+    curve: sheetLureIdx===null ? null : lures[sheetLureIdx].curve,
+    // HOUKUTTIMEN TALLENNUS. solve() lukee nämä attrNetin ja attrDragin kautta.
+    attr: document.getElementById('luAttr').value,
+    attrW: parseFloat(document.getElementById('luAttrW').value)||0,
+    attrLeader: parseFloat(document.getElementById('luAttrLeader').value)||100
   };
   if(sheetLureIdx===null) lures.push(o); else lures[sheetLureIdx] = o;
   lipCache.clear(); closeSheets(); renderAll();
