@@ -122,7 +122,7 @@ nav button.on{color:var(--sky)}
 <body>
 
 <header>
-  <div class="brand">Trolling<em>Pro</em> 2 <span style="font-size:10px;color:var(--ink-faint);font-weight:400">v6.3</span></div>
+  <div class="brand">Trolling<em>Pro</em> 2 <span style="font-size:10px;color:var(--ink-faint);font-weight:400">v6.4</span></div>
   <div id="gpsChip" class="chip">GPS pois</div>
 </header>
 
@@ -2424,7 +2424,13 @@ function diverAsetusSiimalla(tavoite, ft){
     let st;
     try { st = solveDiver(rod, speed); } catch(e){ continue; }
     const ero = Math.abs(st.depth - tavoite);
-    if(paras === null || ero < paras.ero) paras = { as: as, ero: ero, depth: st.depth };
+    // SAKKO ISOMMASTA ASETUKSESTA. Asetus 0 kulkee suoraan takana, 3 planeeraa
+    // kauas sivulle. Syvin vapa halutaan LÄHELLE venettä (ks. järjestyssääntö
+    // alempana), joten tasaväkisistä valitaan pienin asetus. 5 cm askelta
+    // kohden: riittää ratkaisemaan tasapelin, ei ohita oikeaa syvyyttä.
+    const pisteet = ero + as * 0.05;
+    if(paras === null || pisteet < paras.pisteet)
+      paras = { as: as, ero: ero, pisteet: pisteet, depth: st.depth };
   }
   return paras;
 }
@@ -2468,7 +2474,21 @@ function rakennaKattaus(){
   takilaan.forEach(d => takilaTavoitteet.push(d));
 
   const diverTaso = vavoille.find(d => d > 1.5);
-  const plaanariTasot = vavoille.filter(d => d !== diverTaso);
+
+  // JÄRJESTYS: ULOIN ON MATALIN, SYVIN LÄHINNÄ VENETTÄ.
+  // plaanariEtaisyydet antaa listan ENSIMMÄISELLE uloimman paikan, joten
+  // plaanarivavat lajitellaan matalimmasta syvimpään.
+  //
+  // PERUSTELU ON KOKEMUSPERÄINEN, EI LASKETTU. Kun uloin vapa irtoaa kalasta,
+  // siima tulee sisäänpäin ja osuu mataliin siimoihin — jos ne ovat SYVEMMÄLLÄ,
+  // se jää niihin kiinni. Matalin uloimpana tarkoittaa, että irronnut siima
+  // tulee mattona pinnan lähellä eikä pujota itseään muiden alle. Sama järjestys
+  // helpottaa navigointia: uloin ja kauimpana oleva vapa on myös se joka on
+  // lähimpänä pintaa ja siten helpoin nostaa nopeasti pois tieltä.
+  //
+  // Aiemmin järjestys oli päinvastainen. Se ei ollut valinta vaan seuraus siitä,
+  // että vavat työnnettiin listaan syvimmästä alkaen.
+  const plaanariTasot = vavoille.filter(d => d !== diverTaso).sort((a2, b2) => a2 - b2);
 
   // YKSI SIIMAPITUUS KOKO KATTAUKSELLE. Vieheet pysyvät samassa rivissä, eivätkä
   // hae toisiaan kaarroksessa. Syvyysero tehdään painolla, ei pituudella.
