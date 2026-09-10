@@ -122,13 +122,14 @@ nav button.on{color:var(--sky)}
 <body>
 
 <header>
-  <div class="brand">Trolling<em>Pro</em> 2 <span style="font-size:10px;color:var(--ink-faint);font-weight:400">v6.0</span></div>
+  <div class="brand">Trolling<em>Pro</em> 2 <span style="font-size:10px;color:var(--ink-faint);font-weight:400">v6.1</span></div>
   <div id="gpsChip" class="chip">GPS pois</div>
 </header>
 
 <main>
   <!-- ============ VEDOT ============ -->
   <section id="tab-vedot" class="tab on">
+    <div id="suositusBox" style="display:none"></div>
     <div class="stage">
       <div id="profile"></div>
       <div class="stage-foot" style="justify-content:space-between; flex-wrap:wrap; row-gap:6px">
@@ -1182,6 +1183,7 @@ function boot(){
   plaanariSisin = load('tp2_plaanari', null) || { left:8, right:8 };
   CFG   = Object.assign({}, DEFAULT_CFG, load('tp2_cfg_v2', {}));
   lataaVarit();
+  lataaPaketti();
   const env = load('tp2_env', {});
   bottomD = env.bottomD ?? 8; targetD = env.targetD ?? 6; speed = env.speed ?? 3.0;
   document.getElementById('spd').value = speed;
@@ -2295,6 +2297,171 @@ function vavanJarjestys(rod){
   return 1;                       // sivuvapa
 }
 
+/* ============================================================
+   UISTELUTUTKAN SUOSITUS — lisätty 10.9.2026
+   ============================================================
+   Uistelututka lähettää tavoitesyvyydet ja värit. Se tietää kuinka syvälle ja
+   millä värillä, koska sillä on paikallistieto: näkösyvyys, valo, SYKEn vesi.
+   TrollingPro tietää miten sinne päästään. SIIMAPITUUKSIA EI SIIRRETÄ — ne
+   lasketaan täällä omalla fysiikalla, muuten kaksi mallia laskisi samaa asiaa
+   ja päätyisi eri tuloksiin.
+
+   NÄKYVYYS: jos pakettia ei ole, mitään ei renderöidä. Muut TrollingPron
+   käyttäjät eivät näe nappia, virhettä eivätkä tyhjää laatikkoa — ominaisuus
+   yksinkertaisesti ei ole olemassa heille. Paketti syntyy vain omalla
+   laitteella, koska localStorage on originkohtainen. */
+const TP_PAKETTI_AVAIN = 'tp2_uistelututka_paketti';
+let uistelututkaPaketti = null;
+let suositusLaji = 'taimen';
+
+function lataaPaketti(){
+  try{
+    const raw = localStorage.getItem(TP_PAKETTI_AVAIN);
+    uistelututkaPaketti = raw ? JSON.parse(raw) : null;
+    if(uistelututkaPaketti && !uistelututkaPaketti.lajit) uistelututkaPaketti = null;
+  }catch(e){ uistelututkaPaketti = null; }
+}
+
+/* Kuluvan tunnin rivi lajille. Jos tarkkaa tuntia ei ole — paketti kattaa vain
+   valoisat tunnit — otetaan lähin. */
+function suositusNyt(laji){
+  const L = uistelututkaPaketti && uistelututkaPaketti.lajit[laji];
+  if(!L || !L.tunnit || !L.tunnit.length) return null;
+  const h = new Date().getHours();
+  return L.tunnit.reduce((a,b)=> Math.abs(b.t-h) < Math.abs(a.t-h) ? b : a);
+}
+
+/* Uistin värin perusteella. Käyttää samaa värikenttää kuin uistinkirjasto:
+   jos kirjastossa on suositellun värinen uistin, se valitaan. Muuten palautetaan
+   null ja kutsuja käyttää ensimmäistä — arvaamalla ei vaihdeta väriä. */
+function uistinVarilla(varit){
+  if(!varit || !varit.length || !lures.length) return null;
+  for(const v of varit){
+    const nimi = String(v[0]||'').toLowerCase();
+    const l = lures.find(x => (x.variNimi||'').toLowerCase() === nimi);
+    if(l) return l;
+  }
+  return null;
+}
+
+/* Siimapituus tavoitesyvyydelle HAKEMALLA. solve() ei ole käännettävissä
+   suljetussa muodossa, joten kokeillaan pituuksia ja otetaan lähin osuma.
+   Tämä on se kohta jossa TrollingPron oma fysiikka tekee työn. */
+function siimaSyvyydelle(lure, dia, tavoite, diver, dSetting){
+  let paras = null;
+  for(let ft = 10; ft <= 150; ft += 5){
+    const rod = { lureId: lure.id, ft: ft, w: 0, dia: dia, diver: diver,
+                  dSetting: dSetting, dLineType: 'mono', dPerukeFt: 0,
+                  board: false, keski: false };
+    let st;
+    try { st = solveRod(rod, speed); } catch(e){ break; }
+    const ero = Math.abs(st.depth - tavoite);
+    if(paras === null || ero < paras.ero) paras = { ft: ft, ero: ero, depth: st.depth };
+    if(st.depth > tavoite + 0.5) break;
+  }
+  return paras;
+}
+
+/* KYMMENEN VAVAN KATTAUS.
+   Tavoitesyvyys on yksi luku, mutta kymmentä vapaa ei kannata ajaa samassa
+   syvyydessä: jos arvio on pielessä, koko kattaus on pielessä. Vavat
+   porrastetaan tavoitteen ympärille, viisi tasoa molemmin puolin venettä.
+
+   Tapa valitaan syvyyden mukaan samalla logiikalla kuin uistelututkassa:
+   matala = plaanari, keskisyvyys = Dipsy, syvä = takila. Dipsyn asetus on
+   suurin joka mahtuu 75 jalkaan — levitys on ilmaista niin kauan kuin
+   siimabudjetti kestää. */
+function rakennaKattaus(){
+  const r = suositusNyt(suositusLaji);
+  if(!r){ alert('Paketissa ei ole tälle lajille tuntia.'); return; }
+  if(!lures.length){ alert('Lisää ensin vähintään yksi uistin kirjastoon.'); return; }
+  if(!confirm('Rakennetaan 10 vavan kattaus syvyydelle '+fmt(r.syvyys)+' m.\n\n'
+    + 'Nykyinen kattaus tallennetaan ensin kirjastoon, joten sen saa takaisin.')) return;
+
+  // TURVAVERKKO: nykyinen kattaus kirjastoon ennen ylikirjoitusta.
+  try{
+    kirjasto.push({ id:'k'+Date.now(),
+      nimi:'Ennen suositusta '+new Date().toLocaleString('fi-FI'),
+      data: JSON.parse(JSON.stringify({ rods: rods, takilat: takilat, speed: speed,
+                                        bottomD: bottomD, targetD: targetD })) });
+    store('tp2_kirjasto', kirjasto);
+  }catch(e){ /* jos tallennus ei onnistu, jatketaan — käyttäjä hyväksyi */ }
+
+  const lure = uistinVarilla(r.varit) || lures[0];
+  const tavoite = r.syvyys;
+  const kertoimet = [0.65, 0.85, 1.0, 1.15, 1.35];
+  rods.left = []; rods.right = [];
+  const takilaTavoitteet = [];
+
+  kertoimet.forEach(k => {
+    ['left','right'].forEach(side => {
+      const d = tavoite * k;
+      if(d <= 1.5){
+        const p = siimaSyvyydelle(lure, 0.30, d, false, 0);
+        rods[side].push({ lureId: lure.id, ft: p ? p.ft : 60, w: 0, dia: 0.30,
+                          diver: false, dSetting: 0, dLineType: 'mono', dPerukeFt: 0,
+                          board: true, keski: false });
+      } else if(d <= 12){
+        let valittu = null, varalla = null;
+        for(const as of [3,2,1,0]){
+          const p = siimaSyvyydelle(lure, 0.45, d, true, as);
+          if(!p) continue;
+          if(p.ft <= 75){ valittu = { as: as, ft: p.ft }; break; }
+          if(p.ft <= 150) varalla = { as: as, ft: p.ft };
+        }
+        const v = valittu || varalla || { as: 0, ft: 100 };
+        rods[side].push({ lureId: lure.id, ft: v.ft, w: 0, dia: 0.45, diver: true,
+                          dSetting: v.as, dLineType: 'mono', dPerukeFt: 5,
+                          board: false, keski: false });
+      } else {
+        takilaTavoitteet.push(d);
+      }
+    });
+  });
+
+  // Liian syvät siirtyivät takiloille.
+  if(takilaTavoitteet.length && takilat.length){
+    takilaTavoitteet.slice(0, takilat.length).forEach((d, i) => {
+      takilat[i].ft = Math.round(d / FT / 5) * 5;
+      if(takilat[i].uistimet && takilat[i].uistimet[0]) takilat[i].uistimet[0].lureId = lure.id;
+    });
+  }
+
+  saveAll(); renderAll();
+}
+
+function valitseSuositusLaji(k){ suositusLaji = k; renderSuositus(); }
+
+function renderSuositus(){
+  const box = document.getElementById('suositusBox');
+  if(!box) return;
+  // TÄSSÄ ON SE PIILOTUS: ei pakettia, ei osiota.
+  if(!uistelututkaPaketti){ box.innerHTML = ''; box.style.display = 'none'; return; }
+  box.style.display = 'block';
+
+  const lajit = Object.keys(uistelututkaPaketti.lajit);
+  if(!lajit.includes(suositusLaji)) suositusLaji = lajit[0];
+  const r = suositusNyt(suositusLaji);
+  const ika = Math.round((Date.now() - new Date(uistelututkaPaketti.luotu)) / 60000);
+  const ikaTxt = ika < 60 ? ika+' min sitten' : Math.round(ika/60)+' h sitten';
+
+  box.innerHTML = `
+    <div class="card">
+      <h3>Uistelututkan suositus</h3>
+      <div class="sub" style="padding:0 12px 8px">${uistelututkaPaketti.paikka || '—'} ·
+        näkösyvyys ${fmt(uistelututkaPaketti.nakosyvyys)} m · päivitetty ${ikaTxt}${
+        ika > 240 ? ' <span style="color:var(--warn)">— vanha, lähetä uudelleen</span>' : ''}</div>
+      <div class="pills" style="padding:0 12px 8px">${lajit.map(k =>
+        `<button class="pill ${k===suositusLaji?'on':''}" onclick="valitseSuositusLaji('${k}')">${uistelututkaPaketti.lajit[k].nimi}</button>`).join('')}</div>
+      ${r ? `<div class="row"><div><div class="lb">Tavoitesyvyys klo ${String(r.t).padStart(2,'0')}</div>
+        <div class="sub">${r.varit && r.varit.length ? r.varit.map(v=>v[0]).join(' · ') : 'ei väriehdotusta'}</div></div>
+        <div class="num"><span style="font-size:20px;font-weight:700">${fmt(r.syvyys)}</span><span>m</span></div></div>` : ''}
+      <div style="padding:10px 12px"><button class="btn" style="width:100%" onclick="rakennaKattaus()">Rakenna 10 vavan kattaus</button></div>
+      <div class="sub" style="padding:0 12px 10px">Siimapituudet lasketaan tämän sovelluksen omalla mallilla.
+        Nykyinen kattaus tallentuu kirjastoon ennen ylikirjoitusta.</div>
+    </div>`;
+}
+
 function renderRods(items){
   ['left','right'].forEach(side=>{
     const box = document.getElementById('rods-'+side);
@@ -2625,7 +2792,7 @@ function renderAll(){
   const items = (nakyma === 'ylhaalta') ? (drawTop(), collect())
               : (nakyma === 'kala')     ? (drawFish(), collect())
               : drawProfile();
-  renderRods(items); renderPlaanarit(); renderTakilat(); renderLures(); renderKirjasto(); renderCalcLures(); renderCalibLures(); runCalc(); saveAll(); }
+  renderSuositus();   renderRods(items); renderPlaanarit(); renderTakilat(); renderLures(); renderKirjasto(); renderCalcLures(); renderCalibLures(); runCalc(); saveAll(); }
 
 /* ============================================================
    5. VUOROVAIKUTUS
