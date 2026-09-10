@@ -122,7 +122,7 @@ nav button.on{color:var(--sky)}
 <body>
 
 <header>
-  <div class="brand">Trolling<em>Pro</em> 2 <span style="font-size:10px;color:var(--ink-faint);font-weight:400">v6.4</span></div>
+  <div class="brand">Trolling<em>Pro</em> 2 <span style="font-size:10px;color:var(--ink-faint);font-weight:400">v6.5</span></div>
   <div id="gpsChip" class="chip">GPS pois</div>
 </header>
 
@@ -2435,6 +2435,23 @@ function diverAsetusSiimalla(tavoite, ft){
   return paras;
 }
 
+/* TAKILAN VAIJERIMÄÄRÄ TAVOITESYVYYDELLE.
+   Vaijeri lähtee taakse vauhdissa, joten mittarin lukema on aina syvyyttä
+   suurempi. Haetaan siis sovelluksen omalla takilamallilla eikä jaeta
+   syvyyttä jalkamitalla — se olisi sama virhe kuin Dipsyn siimapituudessa. */
+function takilaVaijeriSyvyydelle(tak, tavoite){
+  let paras = null;
+  for(let ft = 5; ft <= 200; ft += 5){
+    const koe = Object.assign({}, tak, { ft: ft });
+    let st;
+    try { st = solveTakila(koe, speed); } catch(e){ break; }
+    const ero = Math.abs(st.depth - tavoite);
+    if(paras === null || ero < paras.ero) paras = { ft: ft, ero: ero, depth: st.depth };
+    if(st.depth > tavoite + 0.5) break;
+  }
+  return paras;
+}
+
 /* KYMMENEN VAVAN KATTAUS.
    Tavoitesyvyys on yksi luku, mutta kymmentä vapaa ei kannata ajaa samassa
    syvyydessä: jos arvio on pielessä, koko kattaus on pielessä. Vavat
@@ -2464,14 +2481,10 @@ function rakennaKattaus(){
   const tavoite = r.syvyys;
   const kertoimet = [0.65, 0.85, 1.0, 1.15, 1.35];
   rods.left = []; rods.right = [];
-  const takilaTavoitteet = [];
-
   // Syvimmästä matalimpaan. Yksi diver puolelleen, ja se saa syvimmän tason
   // johon plaanari yltää huonoiten. Loput plaanareilla ja lyijypainolla.
   const tasot = kertoimet.map(k => tavoite * k).sort((a, b) => b - a);
-  const takilaan = tasot.filter(d => d > 12);
   const vavoille = tasot.filter(d => d <= 12);
-  takilaan.forEach(d => takilaTavoitteet.push(d));
 
   const diverTaso = vavoille.find(d => d > 1.5);
 
@@ -2510,10 +2523,27 @@ function rakennaKattaus(){
     });
   });
 
-  if(takilaTavoitteet.length && takilat.length){
-    takilaTavoitteet.slice(0, takilat.length).forEach((d, i3) => {
-      takilat[i3].ft = Math.round(d / FT / 5) * 5;
-      if(takilat[i3].uistimet && takilat[i3].uistimet[0]) takilat[i3].uistimet[0].lureId = lure.id;
+  // ===== TAKILAT — korjattu 10.9.2026 =====
+  // AIEMPI VIKA: takilat saivat tason vain jos syvyys ylitti 12 metriä. Taimenen
+  // tavoite on 2-3 m ja kuhankin 5-6, joten ehto ei täyttynyt koskaan eivätkä
+  // takilat muuttuneet lajia vaihdettaessa — ne jäivät siihen mihin viimeksi.
+  //
+  // Nyt takilat ovat osa tikapuita ja saavat AINA oman tasonsa. Ne menevät
+  // kaikkein syvimmälle, ja se sopii kahteen asiaan: takila on ainoa väline
+  // joka yltää Dipsyn 75 jalan budjetin alapuolelle, ja se on fyysisesti
+  // veneen perässä eli sisimpänä — sama sääntö kuin muillakin, syvin lähimmäs.
+  //
+  // Kertoimet 1.6 ja 1.9 ovat VALITTUJA lukuja, eivät johdettuja. Ne jatkavat
+  // vapojen tikapuita alaspäin samalla porrastuksella. Pohja rajaa: kuulaa ei
+  // lasketa metriä lähemmäs pohjaa.
+  if(takilat.length){
+    const takilaKertoimet = [1.6, 1.9, 2.2, 2.5, 2.8, 3.1];
+    takilat.forEach((tak, i3) => {
+      let d = tavoite * (takilaKertoimet[i3] || (1.6 + i3 * 0.3));
+      d = Math.min(d, Math.max(1, bottomD - 1));
+      const p = takilaVaijeriSyvyydelle(tak, d);
+      if(p) tak.ft = p.ft;
+      if(tak.uistimet && tak.uistimet[0]) tak.uistimet[0].lureId = lure.id;
     });
   }
 
