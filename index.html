@@ -122,7 +122,7 @@ nav button.on{color:var(--sky)}
 <body>
 
 <header>
-  <div class="brand">Trolling<em>Pro</em> 2 <span style="font-size:10px;color:var(--ink-faint);font-weight:400">v6.6</span></div>
+  <div class="brand">Trolling<em>Pro</em> 2 <span style="font-size:10px;color:var(--ink-faint);font-weight:400">v6.7</span></div>
   <div id="gpsChip" class="chip">GPS pois</div>
 </header>
 
@@ -1879,7 +1879,7 @@ function drawTop(){
       const sivu = diverinSivu(side, s);
       K.push({ x:p.x + sivu, y:p.y - s.run, syvyys:s.depth, vari:colorOf(side,i),
                nimi:lureById(rod.lureId).name, tapa:p.tapa, lure:lureById(rod.lureId),
-               kiinnitysX:p.x, kiinnitysY:p.y, board:rod.board, boardOut:rod.boardOut });
+               paino:rod.w, kiinnitysX:p.x, kiinnitysY:p.y, board:rod.board, boardOut:rod.boardOut });
     });
   });
 
@@ -2001,6 +2001,17 @@ function drawTop(){
               fill="${hidas?'var(--warn)':'#7e93a8'}">${fmt(kv.nopeus)} km/h</text>`;
     } else {
       g += `<text x="${(lx+7).toFixed(1)}" y="${(ly+4).toFixed(1)}" font-size="15" font-weight="700" fill="${k.vari}">${fmt(k.syvyys)}</text>`;
+    }
+    // PLAANARIEN LYIJYPAINO — lisätty 10.9.2026.
+    // Ylänäkymässä syvyysero tehdään painolla, joten paino on se luku jota
+    // vapoja verrataan. Numero lihavoituna keltaisella, yksikkö normaalina:
+    // silmä poimii sarjan 10-20-30-40 yhdellä vilkaisulla.
+    // Vain plaanarivavoille ja vain kun painoa on — nolla ei ole tietoa.
+    if(k.board && k.paino > 0){
+      const py = (kv ? ly + 26 : ly + 18).toFixed(1);
+      g += `<text x="${(lx+7).toFixed(1)}" y="${py}" font-size="14">`
+         + `<tspan font-weight="700" fill="#ffe08a">${Math.round(k.paino)}</tspan>`
+         + `<tspan font-weight="400" fill="#ffe08a" opacity=".75"> g</tspan></text>`;
     }
   });
 
