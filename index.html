@@ -122,7 +122,7 @@ nav button.on{color:var(--sky)}
 <body>
 
 <header>
-  <div class="brand">Trolling<em>Pro</em> 2 <span style="font-size:10px;color:var(--ink-faint);font-weight:400">v5.9</span></div>
+  <div class="brand">Trolling<em>Pro</em> 2 <span style="font-size:10px;color:var(--ink-faint);font-weight:400">v6.0</span></div>
   <div id="gpsChip" class="chip">GPS pois</div>
 </header>
 
@@ -382,11 +382,11 @@ nav button.on{color:var(--sky)}
           <div class="num"><input id="luVariKoodi" type="text" style="width:80px;text-align:left" value=""></div>
         </div>
         <div class="row">
-          <div><div class="lb">Värin nimi</div></div>
-          <div class="num"><input id="luVariNimi" type="text" style="width:150px;text-align:left" value=""></div>
+          <div><div class="lb">Värin nimi</div><div class="sub">valitse listasta tai kirjoita uusi</div></div>
+          <div class="num"><input id="luVariNimi" type="text" list="variLista" style="width:150px;text-align:left" value="" oninput="variNimiMuuttui()"><datalist id="variLista"></datalist></div>
         </div>
         <div class="row">
-          <div><div class="lb">Pinta</div><div class="sub">ratkaisee välkkeen</div></div>
+          <div><div class="lb">Pinta</div><div class="sub" id="luPintaVihje">ratkaisee välkkeen</div></div>
           <div class="num"><select id="luPinta">
             <option value="">—</option>
             <option value="kromi">Kromi</option>
@@ -1181,6 +1181,7 @@ function boot(){
   takilat = load('tp2_takilat', null) || [oletusTakila(), oletusTakila()];
   plaanariSisin = load('tp2_plaanari', null) || { left:8, right:8 };
   CFG   = Object.assign({}, DEFAULT_CFG, load('tp2_cfg_v2', {}));
+  lataaVarit();
   const env = load('tp2_env', {});
   bottomD = env.bottomD ?? 8; targetD = env.targetD ?? 6; speed = env.speed ?? 3.0;
   document.getElementById('spd').value = speed;
@@ -2497,6 +2498,90 @@ function setUistimia(i,n){
 function lisaaTakila(){ if(takilat.length < 6){ takilat.push(oletusTakila()); renderAll(); } }
 function poistaTakila(){ if(takilat.length > 2){ takilat.pop(); renderAll(); } }
 
+/* ============================================================
+   VÄRITAULUKKO — lisätty 10.9.2026
+   ============================================================
+   Nimi -> pinta. Avaimena on VÄRIN NIMI, ei numerokoodi: HK Varma ei käytä
+   Taimenessa asiakkaalle näkyviä värikoodeja. Kuvatiedostojen nimissä on
+   sisäisiä tunnuksia (tk210, tk108), mutta ne eivät ole johdonmukaisia —
+   osa väreistä on muotoa taimen201832 — eikä niihin siksi rakenneta.
+
+   ESITÄYTTÖ on valmistajan oma jaottelu. HK Varma luokittelee Taimen-värinsä
+   viiteen pintakategoriaan, ja pinta näkyy suoraan tuotteen osoitteessa:
+       hkvarma.com/p/173/vaaput/taimen/KROMIPINTAISET/lapinkulta
+   Haettu 10.9.2026: 25 väriä, tasan viisi kutakin pintaa.
+
+   TAULUKKO KASVAA ITSESTÄÄN. Kun kirjaat värin jota ei ole taulukossa,
+   se lisätään sinne valitsemallasi pinnalla. Muiden valmistajien vieheet,
+   poistuneet värit ja omat viritykset menevät samaan taulukkoon. Yhtäkään
+   koodiriviä ei tarvitse muokata kauden aikana.
+
+   MIKSI PINTA ON OMA TAULUKKONSA eikä vieheen kenttä: samaa väriä on monessa
+   koossa ja mallissa. Ilman taulukkoa sama pinta kirjoitettaisiin uudestaan
+   joka kerta, ja kirjoitusasut karkaisivat toisistaan — "Kulta Muikku",
+   "kultamuikku", "k.muikku" ovat analyysille kolme eri väriä. */
+const HK_VARMA_TAIMEN = {
+  // hilepintaiset
+  'Saimaan Perinteinen':'hile', 'Pielisen moniväri':'hile', 'Kymppiuutinen':'hile',
+  'Hilemuikku':'hile', 'Hilekuore':'hile',
+  // hologrammiteippipintaiset
+  'Inari Special':'hologrammi', 'Puruvesi Special':'hologrammi', 'Raatokärpänen':'hologrammi',
+  'Holokuore':'hologrammi', 'Taika':'hologrammi',
+  // kromipintaiset
+  'Lapinkulta':'kromi', 'Sinipinkki':'kromi', 'Kutumuikku':'kromi',
+  'Mustaa Kuparia':'kromi', 'Järvilohen herkku':'kromi',
+  // maalipintaiset
+  'Verihile':'maali', 'UV-Pistepirkko':'maali', 'Illankainen':'maali',
+  'Marjapuuro':'maali', 'Sini Marinmekko':'maali',
+  // tinapaperipintaiset
+  'Tuksu':'tinapaperi', 'Kirjokala':'tinapaperi', 'Pinkkiposki':'tinapaperi',
+  'Cocktail':'tinapaperi', 'Katko':'tinapaperi'
+};
+
+let varitaulu = {};
+
+function lataaVarit(){
+  const omat = load('tp2_varit_v1', null) || {};
+  // Esitäyttö pohjaksi, omat päälle: jos olet korjannut jonkin pinnan, korjaus voittaa.
+  varitaulu = Object.assign({}, HK_VARMA_TAIMEN, omat);
+}
+function tallennaOmatVarit(omat){ store('tp2_varit_v1', omat); }
+
+/* Lisää värin taulukkoon jos se on uusi tai pinta on muuttunut. Vain omat
+   lisäykset tallennetaan — esitäyttöä ei kopioida talteen, jotta valmistajan
+   päivitykset menevät läpi seuraavassa versiossa. */
+function opiVari(nimi, pinta){
+  if(!nimi || !pinta) return;
+  if(varitaulu[nimi] === pinta) return;
+  const omat = load('tp2_varit_v1', null) || {};
+  omat[nimi] = pinta;
+  tallennaOmatVarit(omat);
+  varitaulu[nimi] = pinta;
+  paivitaVariLista();
+}
+
+function paivitaVariLista(){
+  const dl = document.getElementById('variLista');
+  if(!dl) return;
+  dl.innerHTML = Object.keys(varitaulu).sort((a,b)=>a.localeCompare(b,'fi'))
+    .map(n=>`<option value="${n}">`).join('');
+}
+
+/* Nimi kirjoitettu tai valittu: haetaan pinta taulukosta. Ei ylikirjoiteta
+   käsin valittua pintaa, jos nimeä ei tunneta. */
+function variNimiMuuttui(){
+  const nimi = document.getElementById('luVariNimi').value.trim();
+  const tunnettu = varitaulu[nimi];
+  const eP = document.getElementById('luPinta');
+  const vihje = document.getElementById('luPintaVihje');
+  if(tunnettu){
+    eP.value = tunnettu;
+    if(vihje) vihje.textContent = 'pinta tunnistettu nimestä';
+  } else if(vihje){
+    vihje.textContent = nimi ? 'uusi väri — pinta opitaan tallennettaessa' : 'ratkaisee välkkeen';
+  }
+}
+
 /* Värin lyhyt esitys uistinlistaan. Väri tallennetaan tänne, mutta väriehdotus
    tehdään uistelututkan puolella: se tarvitsee paikallistietoa (näkösyvyys,
    veden lämpötila, omat saaliit), jota TrollingProlla ei ole eikä kuulukaan
@@ -2793,6 +2878,7 @@ function openLureSheet(idx){
   document.getElementById('luVariKoodi').value = l.variKoodi || '';
   document.getElementById('luVariNimi').value  = l.variNimi || '';
   document.getElementById('luPinta').value     = l.pinta || '';
+  paivitaVariLista(); variNimiMuuttui();
   document.getElementById('luAttr').value = l.attr || '';
   document.getElementById('luAttrW').value = l.attrW || 0;
   document.getElementById('luAttrLeader').value = l.attrLeader || 100;
@@ -2848,6 +2934,7 @@ function commitLure(){
     attrW: parseFloat(document.getElementById('luAttrW').value)||0,
     attrLeader: parseFloat(document.getElementById('luAttrLeader').value)||100
   };
+  opiVari(o.variNimi, o.pinta);
   if(sheetLureIdx===null) lures.push(o); else lures[sheetLureIdx] = o;
   lipCache.clear(); closeSheets(); renderAll();
 }
