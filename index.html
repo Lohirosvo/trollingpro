@@ -122,7 +122,7 @@ nav button.on{color:var(--sky)}
 <body>
 
 <header>
-  <div class="brand">Trolling<em>Pro</em> 2 <span style="font-size:10px;color:var(--ink-faint);font-weight:400">v6.5</span></div>
+  <div class="brand">Trolling<em>Pro</em> 2 <span style="font-size:10px;color:var(--ink-faint);font-weight:400">v6.6</span></div>
   <div id="gpsChip" class="chip">GPS pois</div>
 </header>
 
@@ -169,7 +169,7 @@ nav button.on{color:var(--sky)}
 
     <div class="readouts">
       <div class="ro"><b id="roDeep" style="color:var(--sky)">0,0</b><small>syvin uistin, m</small></div>
-      <div class="ro"><b id="roSpeed">0,0</b><small>nopeus, km/h</small></div>
+      <div class="ro" id="roSpeedBox"><b id="roSpeed">0,0</b><small id="roSpeedLbl">nopeus, km/h</small></div>
       <div class="ro"><b id="roBottom">–</b><small>pohja, m</small></div>
     </div>
 
@@ -1667,7 +1667,7 @@ function drawFish(){
 
   const deepest = Math.max(0, ...K.map(k=>k.z));
   document.getElementById('roDeep').textContent = fmt(deepest);
-  document.getElementById('roSpeed').textContent = fmt(speed);
+  document.getElementById('roSpeed').textContent = fmt(speed); paivitaNopeusVari();
   document.getElementById('roBottom').textContent = bottomD>0 ? fmt(bottomD) : '-';
   return K;
 }
@@ -2079,7 +2079,7 @@ function drawTop(){
 
   const deepest = Math.max(0, ...K.map(k=>k.syvyys));
   document.getElementById('roDeep').textContent = fmt(deepest);
-  document.getElementById('roSpeed').textContent = fmt(speed);
+  document.getElementById('roSpeed').textContent = fmt(speed); paivitaNopeusVari();
   document.getElementById('roBottom').textContent = bottomD>0 ? fmt(bottomD) : '–';
   return K;
 }
@@ -2270,7 +2270,7 @@ function drawProfile(){
     items.reduce((m,it)=>Math.max(m,it.s.depth), 0),
     takilat.reduce((m,tk)=>Math.max(m, solveTakila(tk, speed).depth), 0));
   document.getElementById('roDeep').textContent = fmt(deepest);
-  document.getElementById('roSpeed').textContent = fmt(speed);
+  document.getElementById('roSpeed').textContent = fmt(speed); paivitaNopeusVari();
   document.getElementById('roBottom').textContent = bottomD>0 ? fmt(bottomD) : '–';
   return items;
 }
@@ -2559,7 +2559,41 @@ function rakennaKattaus(){
   alert(viesti);
 }
 
-function valitseSuositusLaji(k){ suositusLaji = k; renderSuositus(); }
+/* NOPEUSVAROITUS. Uistelututka lähettää lajikohtaisen haarukan; TrollingPro
+   ei aiemmin käyttänyt sitä mihinkään. Nyt nopeuslukeman tausta kertoo ollaanko
+   haarukassa: sininen = liian hidas, punainen = yli rajan, normaali = sopiva.
+
+   MIKSI TÄMÄ ON TÄRKEÄ JUURI TÄSSÄ: siimapituudet ja painot on laskettu sillä
+   nopeudella joka oli voimassa rakennushetkellä. Jos vauhti muuttuu, jokainen
+   laskettu syvyys on pielessä eikä kattaus päivity itsestään — luvut ovat
+   vapoihin kirjoitettuja. Väri on siis muistutus siitä, että kattaus ja vauhti
+   ovat eri mieltä.
+
+   Jos pakettia ei ole, tausta pysyy normaalina eikä selitettä tule. */
+function paivitaNopeusVari(){
+  const box = document.getElementById('roSpeedBox');
+  const lbl = document.getElementById('roSpeedLbl');
+  if(!box || !lbl) return;
+  const L = uistelututkaPaketti && uistelututkaPaketti.lajit[suositusLaji];
+  const h = L && L.nopeus;
+  if(!h || h.length < 2){
+    box.style.background = ''; box.style.borderColor = '';
+    lbl.textContent = 'nopeus, km/h';
+    return;
+  }
+  if(speed < h[0]){
+    box.style.background = 'rgba(60,140,220,.28)'; box.style.borderColor = '#3c8cdc';
+    lbl.textContent = 'liian hidas · ' + fmt(h[0]) + '–' + fmt(h[1]);
+  } else if(speed > h[1]){
+    box.style.background = 'rgba(200,60,60,.28)'; box.style.borderColor = '#c83c3c';
+    lbl.textContent = 'yli rajan · ' + fmt(h[0]) + '–' + fmt(h[1]);
+  } else {
+    box.style.background = ''; box.style.borderColor = '';
+    lbl.textContent = fmt(h[0]) + '–' + fmt(h[1]) + ' km/h';
+  }
+}
+
+function valitseSuositusLaji(k){ suositusLaji = k; renderSuositus(); paivitaNopeusVari(); }
 
 function renderSuositus(){
   const box = document.getElementById('suositusBox');
@@ -3674,7 +3708,7 @@ function onFix(pos){
     gpsViimePiirto = nyt;
     renderAll();
   } else {
-    document.getElementById('roSpeed').textContent = fmt(speed);
+    document.getElementById('roSpeed').textContent = fmt(speed); paivitaNopeusVari();
   }
 }
 function collect(){
