@@ -75,6 +75,9 @@ input[type=range]{flex:1;min-width:40px;accent-color:var(--sky)}
 .rod{background:var(--sea-800);border:1px solid var(--line-soft);border-left:3px solid var(--sky);border-radius:6px;padding:7px 8px;margin-bottom:6px;position:relative}
 .rod .nm{font-size:12px;font-weight:600;line-height:1.25;padding-right:16px;word-break:break-word}
 .rod .pm{font-size:10px;color:var(--ink-faint);margin-top:3px}
+/* Korostetut luvut kortissa: siimapituus sinisenä, lyijypaino keltaisena.
+   Hieman isompi kuin muu metateksti, jotta ne erottuvat 10 pikselin seasta. */
+.rod .pm b{font-size:12px}
 .rod .dp{font-size:22px;font-weight:700;text-align:right;margin-top:2px}
 .rod .x{position:absolute;top:2px;right:2px;background:none;border:none;color:var(--ink-faint);font-size:14px;padding:3px 6px;line-height:1}
 .rod.deep{border-color:var(--warn);background:#231a08}
@@ -122,7 +125,7 @@ nav button.on{color:var(--sky)}
 <body>
 
 <header>
-  <div class="brand">Trolling<em>Pro</em> 2 <span style="font-size:10px;color:var(--ink-faint);font-weight:400">v6.7</span></div>
+  <div class="brand">Trolling<em>Pro</em> 2 <span style="font-size:10px;color:var(--ink-faint);font-weight:400">v6.9</span></div>
   <div id="gpsChip" class="chip">GPS pois</div>
 </header>
 
@@ -2435,11 +2438,13 @@ function diverAsetusSiimalla(tavoite, ft){
     let st;
     try { st = solveDiver(rod, speed); } catch(e){ continue; }
     const ero = Math.abs(st.depth - tavoite);
-    // SAKKO ISOMMASTA ASETUKSESTA. Asetus 0 kulkee suoraan takana, 3 planeeraa
-    // kauas sivulle. Syvin vapa halutaan LÄHELLE venettä (ks. järjestyssääntö
-    // alempana), joten tasaväkisistä valitaan pienin asetus. 5 cm askelta
-    // kohden: riittää ratkaisemaan tasapelin, ei ohita oikeaa syvyyttä.
-    const pisteet = ero + as * 0.05;
+    // SAKKO PIENEMMÄSTÄ ASETUKSESTA — käännetty 10.9.2026.
+    // Aiemmin tasapelin voitti pienin asetus, jotta syvin vapa olisi lähellä
+    // venettä. Se tuotti kattauksia joissa molemmat diverit olivat nollalla eli
+    // päällekkäin veneen vanassa. Levitys on diverin koko tarkoitus, joten
+    // tasaväkisistä valitaan nyt LEVEIN asetus. 5 cm askelta kohden: ratkaisee
+    // tasapelin, ei ohita oikeaa syvyyttä.
+    const pisteet = ero + (3 - as) * 0.05;
     if(paras === null || pisteet < paras.pisteet)
       paras = { as: as, ero: ero, pisteet: pisteet, depth: st.depth };
   }
@@ -2497,7 +2502,14 @@ function rakennaKattaus(){
   const tasot = kertoimet.map(k => tavoite * k).sort((a, b) => b - a);
   const vavoille = tasot.filter(d => d <= 12);
 
-  const diverTaso = vavoille.find(d => d > 1.5);
+  // DIVER SAA MATALIMMAN TASON — muutettu 10.9.2026.
+  // Tämä seuraa asetuksesta 3: se on samalla siimapituudella MATALIN ja
+  // LEVEIN. Kun diver on matala ja kaukana sivulla, se istuu samaan sääntöön
+  // kuin plaanarit — uloin on matalin — ja syvimmät vavat jäävät lähelle
+  // venettä. Aiemmin diver sai syvimmän tason, mikä pakotti pienen asetuksen
+  // eikä levittänyt mitään.
+  const yli15 = vavoille.filter(d => d > 1.5);
+  const diverTaso = yli15.length ? yli15[yli15.length - 1] : undefined;
 
   // JÄRJESTYS: ULOIN ON MATALIN, SYVIN LÄHINNÄ VENETTÄ.
   // plaanariEtaisyydet antaa listan ENSIMMÄISELLE uloimman paikan, joten
@@ -2654,12 +2666,21 @@ function renderRods(items){
                    onclick="openRodSheet('${side}',${it.i})" title="Muokkaa">
         <button class="x" onclick="event.stopPropagation();delRod('${side}',${it.i})" aria-label="Poista">✕</button>
         <div class="nm">${it.lure.name}</div>
-        <div class="pm">${it.rod.ft} ft · ${it.rod.diver
+        <div class="pm"><b style="color:var(--sky);font-weight:700">${it.rod.ft}</b> ft · ${it.rod.diver
             ? 'Dipsy '+it.rod.dSetting+' · '+(it.rod.dLineType==='kuitu'?'kuitu':'mono')
               + (it.rod.dPerukeFt ? ' · peruke '+it.rod.dPerukeFt+' ft' : '')
-            : it.rod.keski ? 'potkurivirta · '+it.rod.w+' g'
+            : it.rod.keski ? 'potkurivirta'
             : it.rod.board ? 'plaanari'
-            : 'sivuvapa · '+it.rod.w+' g'} · ⌀${fmt(it.rod.dia,2)} · ${Math.round(it.s.run)} m perässä${
+            : 'sivuvapa'}${
+            // LYIJYPAINO KORTTIIN — lisätty 10.9.2026. Kun siimapituus on kaikilla
+            // sama, paino on se luku joka erottaa vavat toisistaan, ja se puuttui
+            // plaanarikorteista kokonaan. Numero lihavoituna keltaisella ja
+            // yksikkö normaalina, sama esitystapa kuin ylänäkymässä — silmä
+            // poimii sarjan 10-20-30-40 ilman että yksiköt vievät huomiota.
+            // Nolla jätetään pois: se ei ole tietoa vaan sen puute.
+            (!it.rod.diver && it.rod.w > 0)
+              ? ' · <b style="color:#ffe08a;font-weight:700">'+Math.round(it.rod.w)+'</b> g' : ''
+            } · ⌀${fmt(it.rod.dia,2)} · ${Math.round(it.s.run)} m perässä${
             it.rod.diver ? ' · '+Math.round(it.s.side)+' m sivulle ('+Math.round(it.s.sideDeg)+'°)' : ''}</div>
         <div class="dp" style="color:${it.color}">${fmt(it.s.depth)} m</div>
         ${deep?'<div class="alert">Pohjan tuntumassa</div>':''}
@@ -3053,7 +3074,11 @@ function openRodSheet(side, idx){
   document.getElementById('rodLures').innerHTML = lures.map(l=>`<button class="pill" data-id="${l.id}" onclick="pickLure('${l.id}')">${l.name}</button>`).join('');
   document.getElementById('rodFtPills').innerHTML = [10,15,20,25,30,40,50,75,100,150].map(f=>`<button class="pill" onclick="setNum('rodFt',${f})">${f}</button>`).join('');
   document.getElementById('rodWPills').innerHTML = [0,10,20,30,40,50,60,80,100,120,200].map(w=>`<button class="pill" onclick="setNum('rodW',${w})">${w}</button>`).join('');
-  sheetDiver = false; sheetDSetting = 0; sheetDLine = 'mono';
+  // DIPSYN OLETUSASETUS ON 3 — muutettu 10.9.2026.
+  // Asetus 0 kulkee suoraan veneen vanassa. Kaksi diveriä nollalla ovat
+  // päällekkäin samassa linjassa, mikä on sekä turhaa että sotkuista.
+  // Levitys on diverin koko tarkoitus, joten oletus on levein asetus.
+  sheetDiver = false; sheetDSetting = 3; sheetDLine = 'mono';
   document.getElementById('rodDiverPills').innerHTML =
     `<button class="pill" data-d="off" onclick="setDiver(false)">Sivuvapa</button>`
   + `<button class="pill" data-d="keski" onclick="setKeski()">Potkurivirta</button>`
@@ -3072,7 +3097,7 @@ function openRodSheet(side, idx){
   } else if(vanha && vanha.keski){
     setKeski();
   } else if(vanha && vanha.diver){
-    sheetDSetting = vanha.dSetting || 0;
+    sheetDSetting = (vanha.dSetting !== undefined) ? vanha.dSetting : 3;
     sheetDLine = vanha.dLineType || 'mono';
     const pe = document.getElementById('rodPeruke');
     if(pe) pe.value = vanha.dPerukeFt || 0;
@@ -3086,7 +3111,7 @@ function openRodSheet(side, idx){
   document.getElementById('rodSheet').classList.add('on');
 }
 function pickLure(id){ sheetLure = id; syncRodSheet(); }
-let sheetDiver = false, sheetDSetting = 0, sheetDLine = 'mono';
+let sheetDiver = false, sheetDSetting = 3, sheetDLine = 'mono';
 let sheetBoard = false, sheetKeski = false;
 
 /* Potkurivirta: vapa keskeltä veneen takaa. Sulkee pois plaanarin ja diverin,
