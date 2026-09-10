@@ -122,7 +122,7 @@ nav button.on{color:var(--sky)}
 <body>
 
 <header>
-  <div class="brand">Trolling<em>Pro</em> 2 <span style="font-size:10px;color:var(--ink-faint);font-weight:400">v6.1</span></div>
+  <div class="brand">Trolling<em>Pro</em> 2 <span style="font-size:10px;color:var(--ink-faint);font-weight:400">v6.3</span></div>
   <div id="gpsChip" class="chip">GPS pois</div>
 </header>
 
@@ -2362,6 +2362,73 @@ function siimaSyvyydelle(lure, dia, tavoite, diver, dSetting){
   return paras;
 }
 
+/* YHTENÄINEN SIIMAPITUUS — muutettu 10.9.2026.
+   ============================================================
+   Aiemmin jokaiselle vavalle haettiin oma paras painon ja siimapituuden
+   yhdistelmä. Se osui syvyyksiin tarkasti, mutta tuotti kattauksen jossa
+   siimat olivat 20-90 jalkaa: vieheet olivat eri etäisyyksillä veneen takana,
+   ja kaarroksessa ne hakeutuvat toistensa päälle.
+
+   Nyt siimapituus on KAIKILLE SAMA ja syvyysero tehdään pelkällä painolla.
+   Vieheet pysyvät samassa rivissä, ja kaarroksessa koko rivi kääntyy yhdessä.
+
+   Hinta maksetaan tarkkuudessa: kiinteällä pituudella jokaiseen syvyyteen ei
+   osuta täsmälleen. Haku valitsee sen pituuden jolla YHTEENLASKETTU virhe on
+   pienin, ja jäljelle jäävä virhe kerrotaan käyttäjälle sen sijaan että se
+   piilotettaisiin. */
+const KATTAUS_PAINOT = [0, 10, 20, 30, 40, 50, 60, 80, 100, 120, 200];
+const KATTAUS_SIIMAT = [20, 25, 30, 40, 50, 60, 75, 90, 100];
+
+/* Paras paino annetulle syvyydelle KIINTEÄLLÄ siimapituudella. */
+function painoSyvyydelle(lure, tavoite, ft){
+  let paras = null;
+  for(const w of KATTAUS_PAINOT){
+    const rod = { lureId: lure.id, ft: ft, w: w, dia: 0.45, diver: false,
+                  dSetting: 0, dLineType: 'mono', dPerukeFt: 0,
+                  board: true, keski: false };
+    let st;
+    try { st = solveRod(rod, speed); } catch(e){ continue; }
+    const ero = Math.abs(st.depth - tavoite);
+    if(paras === null || ero < paras.ero) paras = { w: w, ft: ft, ero: ero, depth: st.depth };
+  }
+  return paras;
+}
+
+/* Valitsee yhden siimapituuden koko kattaukselle. Pitkästä siimasta pieni
+   sakko, jotta tasaväkisistä valikoituu lyhyempi — pitkä siima on veneessä
+   hitaampi käsitellä ja vie enemmän tilaa kaarroksessa. */
+function yhteinenSiima(lure, tasot){
+  let paras = null;
+  for(const ft of KATTAUS_SIIMAT){
+    const valinnat = [];
+    let summa = 0;
+    for(const d of tasot){
+      const p = painoSyvyydelle(lure, d, ft);
+      if(!p){ summa = Infinity; break; }
+      valinnat.push(p); summa += p.ero;
+    }
+    if(!isFinite(summa)) continue;
+    const pisteet = summa + (ft > 75 ? (ft - 75) * 0.01 : 0);
+    if(paras === null || pisteet < paras.pisteet)
+      paras = { ft: ft, valinnat: valinnat, summa: summa, pisteet: pisteet };
+  }
+  return paras;
+}
+
+/* Diverin asetus samalla siimapituudella. Kun pituus on lukittu, syvyyttä
+   säädetään asetuksella: 0 syvimmälle, 3 matalimmalle ja leveimmälle. */
+function diverAsetusSiimalla(tavoite, ft){
+  let paras = null;
+  for(const as of [0, 1, 2, 3]){
+    const rod = { ft: ft, dia: 0.45, dSetting: as, dLineType: 'mono', dPerukeFt: 5 };
+    let st;
+    try { st = solveDiver(rod, speed); } catch(e){ continue; }
+    const ero = Math.abs(st.depth - tavoite);
+    if(paras === null || ero < paras.ero) paras = { as: as, ero: ero, depth: st.depth };
+  }
+  return paras;
+}
+
 /* KYMMENEN VAVAN KATTAUS.
    Tavoitesyvyys on yksi luku, mutta kymmentä vapaa ei kannata ajaa samassa
    syvyydessä: jos arvio on pielessä, koko kattaus on pielessä. Vavat
@@ -2393,41 +2460,53 @@ function rakennaKattaus(){
   rods.left = []; rods.right = [];
   const takilaTavoitteet = [];
 
-  kertoimet.forEach(k => {
-    ['left','right'].forEach(side => {
-      const d = tavoite * k;
-      if(d <= 1.5){
-        const p = siimaSyvyydelle(lure, 0.30, d, false, 0);
-        rods[side].push({ lureId: lure.id, ft: p ? p.ft : 60, w: 0, dia: 0.30,
-                          diver: false, dSetting: 0, dLineType: 'mono', dPerukeFt: 0,
-                          board: true, keski: false });
-      } else if(d <= 12){
-        let valittu = null, varalla = null;
-        for(const as of [3,2,1,0]){
-          const p = siimaSyvyydelle(lure, 0.45, d, true, as);
-          if(!p) continue;
-          if(p.ft <= 75){ valittu = { as: as, ft: p.ft }; break; }
-          if(p.ft <= 150) varalla = { as: as, ft: p.ft };
-        }
-        const v = valittu || varalla || { as: 0, ft: 100 };
-        rods[side].push({ lureId: lure.id, ft: v.ft, w: 0, dia: 0.45, diver: true,
-                          dSetting: v.as, dLineType: 'mono', dPerukeFt: 5,
-                          board: false, keski: false });
-      } else {
-        takilaTavoitteet.push(d);
-      }
+  // Syvimmästä matalimpaan. Yksi diver puolelleen, ja se saa syvimmän tason
+  // johon plaanari yltää huonoiten. Loput plaanareilla ja lyijypainolla.
+  const tasot = kertoimet.map(k => tavoite * k).sort((a, b) => b - a);
+  const takilaan = tasot.filter(d => d > 12);
+  const vavoille = tasot.filter(d => d <= 12);
+  takilaan.forEach(d => takilaTavoitteet.push(d));
+
+  const diverTaso = vavoille.find(d => d > 1.5);
+  const plaanariTasot = vavoille.filter(d => d !== diverTaso);
+
+  // YKSI SIIMAPITUUS KOKO KATTAUKSELLE. Vieheet pysyvät samassa rivissä, eivätkä
+  // hae toisiaan kaarroksessa. Syvyysero tehdään painolla, ei pituudella.
+  const yhteinen = plaanariTasot.length ? yhteinenSiima(lure, plaanariTasot) : null;
+  const ft = yhteinen ? yhteinen.ft : 50;
+  const dv = (diverTaso !== undefined) ? diverAsetusSiimalla(diverTaso, ft) : null;
+
+  ['left', 'right'].forEach(side => {
+    if(diverTaso !== undefined){
+      rods[side].push({ lureId: lure.id, ft: ft, w: 0, dia: 0.45, diver: true,
+                        dSetting: dv ? dv.as : 0, dLineType: 'mono', dPerukeFt: 5,
+                        board: false, keski: false });
+    }
+    plaanariTasot.forEach((d, i2) => {
+      const p = yhteinen ? yhteinen.valinnat[i2] : null;
+      rods[side].push({ lureId: lure.id, ft: ft, w: p ? p.w : 0, dia: 0.45,
+                        diver: false, dSetting: 0, dLineType: 'mono', dPerukeFt: 0,
+                        board: true, keski: false });
     });
   });
 
-  // Liian syvät siirtyivät takiloille.
   if(takilaTavoitteet.length && takilat.length){
-    takilaTavoitteet.slice(0, takilat.length).forEach((d, i) => {
-      takilat[i].ft = Math.round(d / FT / 5) * 5;
-      if(takilat[i].uistimet && takilat[i].uistimet[0]) takilat[i].uistimet[0].lureId = lure.id;
+    takilaTavoitteet.slice(0, takilat.length).forEach((d, i3) => {
+      takilat[i3].ft = Math.round(d / FT / 5) * 5;
+      if(takilat[i3].uistimet && takilat[i3].uistimet[0]) takilat[i3].uistimet[0].lureId = lure.id;
     });
   }
 
+  // Jäljelle jäävä virhe kerrotaan, ei piiloteta: kiinteä siimapituus maksaa
+  // tarkkuudessa, ja käyttäjän kuuluu tietää paljonko.
+  let viesti = 'Kattaus rakennettu. Siima ' + ft + ' ft kaikilla vavoilla.';
+  const virheet = (yhteinen ? yhteinen.valinnat.map(v => v.ero) : []).concat(dv ? [dv.ero] : []);
+  const pahin = virheet.length ? Math.max.apply(null, virheet) : 0;
+  if(pahin > 0.4) viesti += ' Suurin poikkeama tavoitteesta ' + fmt(pahin) + ' m — '
+    + 'kiinteä siimapituus ei osu joka syvyyteen täsmälleen.';
+
   saveAll(); renderAll();
+  alert(viesti);
 }
 
 function valitseSuositusLaji(k){ suositusLaji = k; renderSuositus(); }
