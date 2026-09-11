@@ -235,8 +235,10 @@ nav button.on{color:var(--sky)}
         <div class="num"><input id="calcFt" type="number" value="100" step="5" min="0" oninput="runCalc()"><span>ft</span></div></div>
       <div class="row"><div><div class="lb">Siiman paksuus</div><div class="sub">ohuempi siima ui syvemmälle</div></div>
         <div class="num"><input id="calcDia" type="number" value="0.45" step="0.01" min="0.05" oninput="runCalc()"><span>mm</span></div></div>
-      <div class="row" id="calcWRow"><div class="lb">Lyijypaino</div>
+      <div class="row" id="calcWRow"><div class="lb">Lisäpaino</div>
         <div class="num"><input id="calcW" type="number" value="0" step="10" min="0" oninput="runCalc()"><span>g</span></div></div>
+      <div class="row" id="calcWLeaderRow"><div class="lb">Painon etäisyys (tapsi)</div>
+        <div class="num"><input id="calcWLeader" type="number" value="10" step="1" min="0" oninput="runCalc()"><span>ft</span></div></div>
       <div class="row"><div><div class="lb">Dipsy Diver</div><div class="sub">korvaa lyijypainon</div></div>
         <div class="num"><select id="calcDiver" onchange="runCalc()">
           <option value="">ei</option><option value="0">asetus 0</option><option value="1">asetus 1</option>
@@ -353,9 +355,27 @@ nav button.on{color:var(--sky)}
         <div id="rodFtPills" class="pills"></div>
         <div class="row"><div class="lb">Tarkka määrä</div><div class="num"><input id="rodFt" type="number" value="100" step="5" min="0" oninput="syncRodSheet()"><span>ft</span></div></div>
       </div>
-      <div class="card" id="rodWeightCard"><h3>Lyijypaino (g)</h3>
+      <div class="card" id="rodWeightCard"><h3>Lisäpaino</h3>
         <div id="rodWPills" class="pills"></div>
         <div class="row"><div class="lb">Tarkka paino</div><div class="num"><input id="rodW" type="number" value="0" step="5" min="0" oninput="syncRodSheet()"><span>g</span></div></div>
+        <div class="row" id="rodWLeaderRivi"><div class="lb">Painon etäisyys uistimesta</div><div class="num"><input id="rodWLeader" type="number" value="10" step="1" min="0" max="150" oninput="syncRodSheet()"><span>ft</span></div></div>
+        <div class="row" id="rodWMatRivi">
+          <div><div class="lb">Materiaali</div><div class="sub">Vaikuttaa painon tilavuuteen</div></div>
+          <div class="num">
+            <select id="rodWMat" onchange="checkWMat()">
+              <option value="11340">Lyijy (11,3 g/cm³)</option>
+              <option value="19250">Volframi (19,3 g/cm³)</option>
+              <option value="8500">Messinki (8,5 g/cm³)</option>
+              <option value="7850">Teräs (7,9 g/cm³)</option>
+              <option value="7140">Sinkki (7,1 g/cm³)</option>
+              <option value="muu">Muu tiheys...</option>
+            </select>
+          </div>
+        </div>
+        <div class="row" id="rodWRhoRivi" style="display:none">
+          <div class="lb">Oma tiheys</div>
+          <div class="num"><input id="rodWRho" type="number" value="11340" step="100" min="1000" oninput="syncRodSheet()"><span>kg/m³</span></div>
+        </div>
       </div>
       <div class="card"><h3>Siima</h3>
         <div class="row"><div class="lb">Paksuus</div><div class="num"><input id="rodDia" type="number" value="0.45" step="0.01" min="0.05" oninput="syncRodSheet()"><span>mm</span></div></div>
@@ -515,8 +535,8 @@ let CFG = Object.assign({}, DEFAULT_CFG);
    mikä loiventaa siimaa ylöspäin mentäessä — juuri siksi ohut siima ui syvemmälle. */
 function integrate(L, dLineM, v, Fv0, Fh0, steps){
   steps = steps || 60;
-  if(!(L > 0)) return {depth:0, run:0, pts:[[0,0]]};
-  if(Fv0 <= 1e-7) return {depth:0, run:L, pts:[[0,0],[L,0]]};   // kelluu pinnassa
+  if(!(L > 0)) return {depth:0, run:0, pts:[[0,0]], endV:Fv0, endH:Fh0};
+  if(Fv0 <= 1e-7) return {depth:0, run:L, pts:[[0,0],[L,0]], endV:Fv0, endH:Fh0};   // kelluu pinnassa
   const ds = L/steps, per = Math.PI*dLineM;
   let H = Math.max(Fh0, 0), V = Fv0, z = 0, x = 0;
   const pts = [[0,0]];
@@ -530,7 +550,7 @@ function integrate(L, dLineM, v, Fv0, Fh0, steps){
     H += dN*c + dT*s;
     V -= dN*s + dT*c;
   }
-  return {depth:z, run:x, pts:pts};
+  return {depth:z, run:x, pts:pts, endV:V, endH:H};
 }
 
 const BUOY = {float:'buoyFloat', susp:'buoySusp', sink:'buoySink'};
@@ -542,10 +562,10 @@ function lureDrag(lure, v){                   // Cd*A skaalautuu uistimen koon m
   const size = Math.pow(Math.max(1,lure.weight)/CFG.refSize, 2/3);
   return 0.5*RHO_W*base*size*(lure.dragMul||1)*v*v;
 }
-function sinkerNet(g){ return g<=0 ? 0 : g/1000*G*(1 - RHO_W/RHO_PB); }
-function sinkerDrag(g, v){
+function sinkerNet(g, rho = 11340){ return g<=0 ? 0 : g/1000*G*(1 - RHO_W/rho); }
+function sinkerDrag(g, v, rho = 11340){
   if(g<=0) return 0;
-  const r = Math.cbrt(3*(g/1000/RHO_PB)/(4*Math.PI));
+  const r = Math.cbrt(3*(g/1000/rho)/(4*Math.PI));
   return 0.5*RHO_W*CFG.cdSinker*Math.PI*r*r*v*v;
 }
 /* ============================================================
@@ -636,25 +656,54 @@ function lipForceRef(lure, lengthFt){
 }
 
 /* Koko vedon ratkaisu */
-function solve(lure, lengthFt, sinkerG, lineDiaMm, speedKmH){
+function solve(lure, lengthFt, sinkerG, sinkerRho, lineDiaMm, speedKmH, leaderFt = 10){
   const v = Math.max(0, speedKmH)/3.6;
   const L = Math.max(0, lengthFt)*FT;
   const vR = CFG.refSpeed/3.6;
   const lip = lipForceRef(lure, lengthFt) * (vR>0 ? Math.pow(v/vR,2) : 0);
-  // Houkutin lisätään VAIN tänne, ei lipForceRefiin. Näin uistimen oma
-  // sukellusvoima pysyy kalibroituna valmistajan lukemaan ilman houkutinta,
-  // ja houkutin muuttaa vain tätä vetoa.
-  const Fv = sinkerNet(sinkerG) + lureNet(lure) + lip + attrNet(lure);
-  const Fh = sinkerDrag(sinkerG, v) + lureDrag(lure, v) + attrDrag(lure, v);
-  const r = integrate(L, lineDiaMm/1000, v, Fv, Fh, 60);
+  
+  const Fv_lure = lureNet(lure) + lip + attrNet(lure);
+  const Fh_lure = lureDrag(lure, v) + attrDrag(lure, v);
+  const dM = lineDiaMm/1000;
+  
+  let depth, run, pts, weightPt = null;
+
+  if (sinkerG > 0 && leaderFt > 0) {
+    const L1 = Math.min(L, leaderFt * FT); 
+    const L2 = L - L1;                     
+    
+    const r1 = integrate(L1, dM, v, Fv_lure, Fh_lure, Math.max(10, Math.floor(60 * L1/L)));
+    
+    const Fv_weight = r1.endV + sinkerNet(sinkerG, sinkerRho);
+    const Fh_weight = r1.endH + sinkerDrag(sinkerG, v, sinkerRho);
+    
+    const r2 = integrate(L2, dM, v, Fv_weight, Fh_weight, Math.max(10, Math.floor(60 * L2/L)));
+    
+    depth = r1.depth + r2.depth;
+    run = r1.run + r2.run;
+    weightPt = [r1.run, r1.depth]; 
+    
+    pts = r1.pts.slice();
+    for (let i = 1; i < r2.pts.length; i++) {
+        pts.push([r1.run + r2.pts[i][0], r1.depth + r2.pts[i][1]]);
+    }
+  } else {
+    const Fv = sinkerNet(sinkerG, sinkerRho) + Fv_lure;
+    const Fh = sinkerDrag(sinkerG, v, sinkerRho) + Fh_lure;
+    const r1 = integrate(L, dM, v, Fv, Fh, 60);
+    depth = r1.depth; run = r1.run; pts = r1.pts;
+    if (sinkerG > 0) weightPt = [0, 0];
+  }
+
   const k = CFG.calib;
-  const depth = Math.min(L, r.depth*k);
-  const scale = r.depth>0 ? depth/r.depth : 1;
-  const run = Math.min(r.run, Math.sqrt(Math.max(0, L*L - depth*depth)));
-  const rs = r.run>0 ? run/r.run : 1;
-  const pts = r.pts.map(p => [p[0]*rs, p[1]*scale]);
-  const ang = L>0 ? Math.acos(Math.min(1, depth/L))*180/Math.PI : 90;
-  return {depth:depth, run:run, angle:ang, pts:pts, L:L};
+  const depthCalib = Math.min(L, depth*k);
+  const scale = depth>0 ? depthCalib/depth : 1;
+  const runCalib = Math.min(run, Math.sqrt(Math.max(0, L*L - depthCalib*depthCalib)));
+  const rs = run>0 ? runCalib/run : 1;
+  const scaledPts = pts.map(p => [p[0]*rs, p[1]*scale]);
+  const ang = L>0 ? Math.acos(Math.min(1, depthCalib/L))*180/Math.PI : 90;
+  
+  return {depth:depthCalib, run:runCalib, angle:ang, pts:scaledPts, L:L, weightPt: weightPt ? [weightPt[0]*rs, weightPt[1]*scale] : null};
 }
 
 /* ============================================================
@@ -1140,7 +1189,7 @@ function aurinkoNyt(lat, lon){
    Kaikki piirto ja kortit kutsuvat tätä, jotta erityistapauksia ei ole. */
 function solveRod(rod, speedKmH){
   if(rod.diver) return solveDiver(rod, speedKmH);
-  return solve(lureById(rod.lureId), rod.ft, rod.w, rod.dia, speedKmH);
+  return solve(lureById(rod.lureId), rod.ft, rod.w, rod.wRho || 11340, rod.dia, speedKmH, rod.wLeaderFt !== undefined ? rod.wLeaderFt : 10);
 }
 
 /* ============================================================
@@ -2229,8 +2278,15 @@ function drawProfile(){
     const [tx,ty] = TIP[it.side];
     const pts = it.s.pts;               // pts[0] = uistin, viimeinen = vavan kärki
     const lx = tx - it.s.run*PXM, ly = SURF + it.s.depth*PXM;
-    const px = pts[Math.min(pts.length-1, 3)];   // painon paikka: ~2 m uistimesta ylöspäin
-    const sx = tx - (it.s.run - px[0])*PXM, sy = SURF + (it.s.depth - px[1])*PXM;
+    let sx, sy;
+    if (it.s.weightPt) {
+      sx = tx - (it.s.run - it.s.weightPt[0])*PXM;
+      sy = SURF + (it.s.depth - it.s.weightPt[1])*PXM;
+    } else {
+      const px = pts[Math.min(pts.length-1, 3)]; // fallback
+      sx = tx - (it.s.run - px[0])*PXM;
+      sy = SURF + (it.s.depth - px[1])*PXM;
+    }
     const clipped = lx < X0;
 
     const YMAX = SURF + MAXD*PXM;
@@ -3070,6 +3126,14 @@ function openRodSheet(side, idx){
     (vanha ? 'Muokkaa: ' : '') + (side==='left' ? 'Paapuurin vapa' : 'Tyyrpuurin vapa');
   document.getElementById('rodFt').value  = vanha ? vanha.ft  : CFG.defFt;
   document.getElementById('rodW').value   = vanha ? vanha.w   : 0;
+  document.getElementById('rodWLeader').value = vanha && vanha.wLeaderFt !== undefined ? vanha.wLeaderFt : 10;
+  if (vanha && vanha.wRho) {
+    const wMatSelect = document.getElementById('rodWMat');
+    const match = Array.from(wMatSelect.options).find(opt => opt.value === String(vanha.wRho));
+    if (match) { wMatSelect.value = String(vanha.wRho); }
+    else { wMatSelect.value = 'muu'; document.getElementById('rodWRho').value = vanha.wRho; }
+  } else { document.getElementById('rodWMat').value = "11340"; }
+  if (typeof checkWMat === 'function') checkWMat();
   document.getElementById('rodDia').value = vanha ? vanha.dia : CFG.defDia;
   document.getElementById('rodLures').innerHTML = lures.map(l=>`<button class="pill" data-id="${l.id}" onclick="pickLure('${l.id}')">${l.name}</button>`).join('');
   document.getElementById('rodFtPills').innerHTML = [10,15,20,25,30,40,50,75,100,150].map(f=>`<button class="pill" onclick="setNum('rodFt',${f})">${f}</button>`).join('');
@@ -3163,10 +3227,18 @@ function setDiver(on, s){
   syncRodSheet();
 }
 function setDiverLine(t){ sheetDLine = t; syncRodSheet(); }
+function checkWMat() {
+  const isMuu = document.getElementById('rodWMat').value === 'muu';
+  document.getElementById('rodWRhoRivi').style.display = isMuu ? 'flex' : 'none';
+  syncRodSheet();
+}
 function setNum(id,v){ document.getElementById(id).value = v; syncRodSheet(); }
 function syncRodSheet(){
   const ft = parseFloat(document.getElementById('rodFt').value)||0;
   const w  = parseFloat(document.getElementById('rodW').value)||0;
+  const wL = parseFloat(document.getElementById('rodWLeader').value)||10;
+  const matVal = document.getElementById('rodWMat').value;
+  const wRho = matVal === 'muu' ? (parseFloat(document.getElementById('rodWRho').value) || 11340) : parseFloat(matVal);
   const d  = parseFloat(document.getElementById('rodDia').value)||0.30;
   document.querySelectorAll('#rodLures .pill').forEach(p=>p.classList.toggle('on', p.dataset.id===sheetLure));
   document.querySelectorAll('#rodFtPills .pill').forEach(p=>p.classList.toggle('on', parseFloat(p.textContent)===ft));
@@ -3185,7 +3257,7 @@ function syncRodSheet(){
     ? solveDiver({ft:ft, dia:d, dSetting:sheetDSetting, dLineType:sheetDLine,
                   dPerukeFt: parseFloat((document.getElementById('rodPeruke')||{}).value)||0,
                   lureId: sheetLure}, speed)
-    : solve(lureById(sheetLure), ft, w, sheetBoard ? d : d, speed);
+    : solve(lureById(sheetLure), ft, w, wRho, sheetBoard ? d : d, speed, wL);
   document.getElementById('rodPreview').textContent = fmt(s.depth);
   const eTapa = document.getElementById('rodPreviewTapa');
   if(eTapa){
@@ -3210,6 +3282,8 @@ function commitRod(){
     lureId: sheetLure,
     ft: parseFloat(document.getElementById('rodFt').value)||0,
     w:  sheetDiver ? 0 : (parseFloat(document.getElementById('rodW').value)||0),
+    wLeaderFt: parseFloat(document.getElementById('rodWLeader').value)||10,
+    wRho: (document.getElementById('rodWMat').value === 'muu') ? (parseFloat(document.getElementById('rodWRho').value) || 11340) : parseFloat(document.getElementById('rodWMat').value),
     dia:parseFloat(document.getElementById('rodDia').value)||0.30,
     diver: sheetDiver,
     dSetting: sheetDSetting,
@@ -3318,14 +3392,17 @@ function runCalc(){
   const ft = parseFloat(document.getElementById('calcFt').value)||0;
   const d  = parseFloat(document.getElementById('calcDia').value)||0.30;
   const w  = parseFloat(document.getElementById('calcW').value)||0;
+  const wL = parseFloat(document.getElementById('calcWLeader').value)||10;
   const s  = parseFloat(document.getElementById('calcS').value)||0;
   const lure = lureById(calcLureId);
   const dv = document.getElementById('calcDiver').value;
   const onDiver = dv !== '';
   document.getElementById('calcWRow').style.display = onDiver ? 'none' : '';
+  const eWLeader = document.getElementById('calcWLeaderRow');
+  if(eWLeader) eWLeader.style.display = onDiver ? 'none' : '';
   document.getElementById('calcM').textContent = '= '+fmt(ft*FT)+' m';
   const r = onDiver ? solveDiver({ft:ft, dia:d, dSetting:parseInt(dv,10), dLineType:'mono'}, s)
-                    : solve(lure, ft, w, d, s);
+                    : solve(lure, ft, w, 11340, d, s, wL);
   document.getElementById('calcDepth').textContent = fmt(r.depth);
   document.getElementById('calcMeta').textContent = `${Math.round(r.run)} m veneen perässä · siima ${Math.round(r.angle)}° pinnasta`;
 
@@ -3334,7 +3411,7 @@ function runCalc(){
   lens.forEach(L=>{
     html += `<tr><td>${L}</td>` + speeds.map(v=>{
       const dep = onDiver ? solveDiver({ft:L, dia:d, dSetting:parseInt(dv,10), dLineType:'mono'}, v).depth
-                          : solve(lure, L, w, d, v).depth;
+                          : solve(lure, L, w, 11340, d, v, wL).depth;
       const hot = bottomD>0 && dep>bottomD-0.3;
       return `<td style="${hot?'color:var(--warn)':''}">${fmt(dep)}</td>`;
     }).join('') + '</tr>';
@@ -3359,7 +3436,7 @@ function calibrateFromMeasurement(){
   const out = document.getElementById('kResult');
   if(!(ft>0 && s>0 && tgt>0)){ out.textContent = 'Täytä siiman pituus, nopeus ja mitattu syvyys.'; return; }
   const orig = lure.dragMul || 1;
-  const depthAt = m => { lure.dragMul = m; lipCache.clear(); return solve(lure, ft, w, dia, s).depth; };
+  const depthAt = m => { lure.dragMul = m; lipCache.clear(); return solve(lure, ft, w, 11340, dia, s, 10).depth; };
   let lo = 0.05, hi = 40;
   if(depthAt(hi) > tgt){ lure.dragMul = orig; lipCache.clear();
     out.textContent = 'Malli ei pääse näin matalalle edes suurella vastuksella. Tarkista paino ja siiman pituus.'; return; }
