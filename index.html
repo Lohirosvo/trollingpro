@@ -125,7 +125,7 @@ nav button.on{color:var(--sky)}
 <body>
 
 <header>
-  <div class="brand">Trolling<em>Pro</em> 2 <span style="font-size:10px;color:var(--ink-faint);font-weight:400">v6.9</span></div>
+  <div class="brand">Trolling<em>Pro</em> 2 <span style="font-size:10px;color:var(--ink-faint);font-weight:400">v7.0</span></div>
   <div id="gpsChip" class="chip">GPS pois</div>
 </header>
 
@@ -180,6 +180,8 @@ nav button.on{color:var(--sky)}
       <button id="gpsBtn" class="btn go" onclick="toggleGPS()">Käynnistä GPS</button>
       <label for="spd">Käsin</label>
       <input id="spd" type="range" min="0" max="8" step="0.1" value="3" oninput="setManualSpeed(this.value)">
+      <a id="windyBtn" class="btn sm ghost" href="https://www.windy.com/" target="_blank" rel="noopener"
+         style="text-decoration:none;white-space:nowrap">🌬️ Windy</a>
     </div>
 
     <div class="bar">
@@ -1187,6 +1189,7 @@ function boot(){
   CFG   = Object.assign({}, DEFAULT_CFG, load('tp2_cfg_v2', {}));
   lataaVarit();
   lataaPaketti();
+  paivitaWindyLinkki();
   const env = load('tp2_env', {});
   bottomD = env.bottomD ?? 8; targetD = env.targetD ?? 6; speed = env.speed ?? 3.0;
   document.getElementById('spd').value = speed;
@@ -1670,7 +1673,7 @@ function drawFish(){
 
   const deepest = Math.max(0, ...K.map(k=>k.z));
   document.getElementById('roDeep').textContent = fmt(deepest);
-  document.getElementById('roSpeed').textContent = fmt(speed); paivitaNopeusVari();
+  document.getElementById('roSpeed').textContent = fmt(speed); paivitaNopeusVari(); paivitaWindyLinkki();
   document.getElementById('roBottom').textContent = bottomD>0 ? fmt(bottomD) : '-';
   return K;
 }
@@ -3593,6 +3596,33 @@ function renderKirjasto(){
 /* ============================================================
    7. GPS
    ============================================================ */
+/* WINDY-LINKKI — lisätty 11.9.2026.
+   Osoite osoittaa oletuksena Windyn etusivulle ja tarkentuu omaan sijaintiin
+   jos se on tiedossa. Kaksi lähdettä, halvin ensin:
+
+   1) lastFix — TrollingPron oma GPS-seuranta. Jos GPS on päällä, sijainti on
+      jo muistissa eikä uutta lupakyselyä tarvita.
+   2) navigator.geolocation, mutta VAIN jos lupa on jo myönnetty. Lupaa ei
+      kysytä tämän takia: kartan katsominen ei ole syy pompauttaa lupaikkunaa
+      keskellä kalareissua, ja ilman sijaintia linkki toimii silti.
+
+   Jos kumpikaan ei tuota sijaintia, nappi vie Windyn etusivulle. Se on
+   hyväksyttävä lopputulos, ei virhe. */
+function paivitaWindyLinkki(){
+  const b = document.getElementById('windyBtn');
+  if(!b) return;
+  const aseta = (la, lo) => {
+    b.href = 'https://www.windy.com/?' + la.toFixed(3) + ',' + lo.toFixed(3) + ',10';
+  };
+  if(lastFix && lastFix.la != null && lastFix.lo != null){ aseta(lastFix.la, lastFix.lo); return; }
+  if(!navigator.permissions || !navigator.geolocation) return;
+  navigator.permissions.query({ name: 'geolocation' }).then(r => {
+    if(r.state !== 'granted') return;
+    navigator.geolocation.getCurrentPosition(p => aseta(p.coords.latitude, p.coords.longitude),
+                                             () => {}, { maximumAge: 300000 });
+  }).catch(() => {});
+}
+
 function toggleGPS(){
   const btn = document.getElementById('gpsBtn'), chip = document.getElementById('gpsChip');
   if(gpsId !== null){ stopGPS(); return; }
