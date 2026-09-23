@@ -1,0 +1,571 @@
+<!DOCTYPE html>
+<html lang="fi">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Uistelusäädin Pro</title>
+    <style>
+        :root {
+            --bg-color: #121212;
+            --text-color: #ffffff;
+            --accent-green: #00e676;
+            --accent-red: #ff3d00;
+            --accent-blue: #00b0ff;
+            --accent-orange: #ff9800;
+            --panel-bg: #1e1e1e;
+        }
+        body { background-color: var(--bg-color); color: var(--text-color); font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; margin: 0; padding: 0; display: flex; flex-direction: column; height: 100vh; box-sizing: border-box; user-select: none; -webkit-user-select: none; -webkit-touch-callout: none; }
+        
+        .top-temp-banner { position: relative; width: 100%; height: 160px; background: #111; border-bottom: 2px solid #333; overflow: hidden; }
+        #temp-canvas { position: absolute; top: 0; left: 0; width: 100%; height: 100%; z-index: 1; }
+        .temp-overlay { position: absolute; top: 10px; left: 15px; right: 15px; z-index: 2; display: flex; justify-content: space-between; align-items: flex-start; pointer-events: none; }
+        .temp-current-box { display: flex; align-items: center; gap: 8px; text-shadow: 0 2px 4px rgba(0,0,0,0.8); pointer-events: auto; }
+        .temp-value { font-size: 2.8rem; font-weight: bold; color: #fff; }
+        .temp-trend { font-size: 2rem; }
+        .temp-stats-overlay { text-align: right; text-shadow: 0 1px 3px rgba(0,0,0,0.8); pointer-events: auto; }
+        .stat-label { font-size: 0.75rem; color: #ccc; text-transform: uppercase; }
+        .stat-val { font-size: 1.1rem; font-weight: bold; color: white; }
+        .stat-avg { color: #fff; margin-top: 5px; font-size: 0.9rem; }
+        .graph-label-min { position: absolute; bottom: 5px; right: 15px; font-size: 0.8rem; color: #fff; z-index: 2; text-shadow: 0 1px 2px #000; }
+        .flash-overlay { position: absolute; inset: 0; background: var(--accent-green); opacity: 0; z-index: 10; pointer-events: none; transition: opacity 0.3s; }
+
+        .content-container { padding: 10px 15px; display: flex; flex-direction: column; flex: 1; }
+        .header { display: flex; justify-content: space-between; font-size: 0.85rem; color: #888; margin-bottom: 10px; }
+        .panel { background-color: var(--panel-bg); border-radius: 12px; text-align: center; padding: 15px; margin-bottom: 10px; box-shadow: 0 4px 6px rgba(0,0,0,0.3); position: relative; }
+        .target-speed { font-size: 1.2rem; color: #888; display: flex; justify-content: center; align-items: center; gap: 8px; }
+        .current-speed { font-size: 4.5rem; font-weight: bold; margin: -5px 0; color: var(--accent-green); text-shadow: 0 0 10px rgba(0, 230, 118, 0.3); }
+        .speed-label { font-size: 0.9rem; color: #888; margin-top: 5px; }
+        
+        .unit-toggle { cursor: pointer; color: var(--accent-blue); padding: 2px 6px; border-radius: 4px; background: rgba(0, 176, 255, 0.1); border: 1px dashed var(--accent-blue); display: inline-block; pointer-events: auto; }
+        
+        /* Info-pallo (i) tyylit */
+        .info-btn { display: inline-flex; align-items: center; justify-content: center; width: 22px; height: 22px; background: rgba(255,255,255,0.15); color: #fff; border: 1px solid #777; border-radius: 50%; font-size: 0.8rem; font-style: italic; font-weight: bold; cursor: pointer; pointer-events: auto; transition: background 0.2s; z-index: 5; }
+        .info-btn:active { background: var(--accent-blue); color: #000; }
+
+        .offset-container { display: flex; align-items: center; justify-content: center; gap: 15px; margin-top: 5px; }
+        .btn-small { background-color: #333; color: white; border: none; border-radius: 8px; font-size: 1.5rem; width: 45px; height: 45px; cursor: pointer; }
+        .offset-value { font-size: 1.8rem; font-weight: bold; min-width: 70px; color: #fff; }
+
+        .controls { display: flex; justify-content: space-between; gap: 15px; margin-bottom: 10px; }
+        .btn-main { flex: 1; background-color: #333; border: none; border-radius: 12px; font-size: 3rem; font-weight: bold; padding: 5px 0; cursor: pointer; }
+        .btn-main:active { background-color: #444; }
+        .btn-up { color: var(--accent-green); }
+        .btn-down { color: var(--accent-red); }
+        
+        /* Uusi rakenne alemmille painikkeille, joissa info erillään */
+        .active-preset-row { display: flex; gap: 10px; margin-bottom: 10px; }
+        
+        .preset-wrapper { flex: 2; position: relative; display: flex; align-items: center; }
+        .btn-active-preset { width: 100%; background-color: #2c2c2c; border: 1px solid #444; color: white; padding: 12px 40px 12px 12px; border-radius: 8px; font-size: 1.1rem; cursor: pointer; text-align: left; display: flex; flex-direction: column; }
+        .preset-wrapper .info-btn { position: absolute; right: 10px; top: 50%; transform: translateY(-50%); }
+
+        .profile-wrapper { flex: 1.2; position: relative; display: flex; align-items: center; }
+        .btn-profile { width: 100%; background-color: #2c2c2c; border: 1px solid var(--accent-orange); color: var(--accent-orange); padding: 12px 40px 12px 12px; border-radius: 8px; font-size: 0.95rem; cursor: pointer; font-weight: bold; display: flex; flex-direction: column; justify-content: center; line-height: 1.2; text-align: left; }
+        .btn-profile .sub-text { font-size: 0.7rem; font-weight: normal; opacity: 0.8; }
+        .profile-wrapper .info-btn { position: absolute; right: 10px; top: 50%; transform: translateY(-50%); border-color: var(--accent-orange); color: var(--accent-orange); }
+
+        .servo-status { margin-top: auto; background-color: var(--panel-bg); padding: 12px; border-radius: 12px; }
+        .servo-bar-container { height: 10px; background-color: #333; border-radius: 5px; overflow: hidden; margin-top: 5px; }
+        .servo-bar { height: 100%; background-color: var(--accent-blue); width: 40%; transition: width 0.1s linear; }
+        .status-text { display: flex; justify-content: space-between; font-size: 0.8rem; color: #aaa; }
+
+        .modal { display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.85); z-index: 100; align-items: center; justify-content: center; }
+        .modal-content { background: var(--panel-bg); width: 90%; max-height: 80vh; border-radius: 12px; display: flex; flex-direction: column; overflow: hidden; box-shadow: 0 10px 25px rgba(0,0,0,0.5); }
+        .modal-header { padding: 15px 20px; font-size: 1.2rem; border-bottom: 1px solid #444; display: flex; justify-content: space-between; font-weight: bold; }
+        .close-btn { color: var(--accent-red); font-size: 1.5rem; cursor: pointer; padding: 0 10px; }
+        .preset-list { overflow-y: auto; padding: 15px; display: flex; flex-direction: column; gap: 10px; }
+        
+        .list-item { background: #333; padding: 12px 15px; border-radius: 8px; font-size: 1.1rem; border: none; color: white; display: flex; justify-content: space-between; align-items: center; }
+        .list-item-clickable { flex: 1; display: flex; justify-content: space-between; align-items: center; cursor: pointer; }
+        .btn-delete-lure { background: rgba(255, 61, 0, 0.2); color: var(--accent-red); border: 1px solid var(--accent-red); border-radius: 6px; padding: 8px 12px; font-size: 0.9rem; cursor: pointer; margin-left: 10px; }
+        .btn-delete-lure:active { background: var(--accent-red); color: white; }
+
+        .list-item-row { display: flex; justify-content: space-between; width: 100%; }
+        .list-desc { font-size: 0.8rem; color: #aaa; margin-top: 5px; font-weight: normal; }
+        .btn-add-new { background: var(--accent-green); color: black; padding: 15px; border: none; font-size: 1.1rem; font-weight: bold; margin: 15px; border-radius: 8px; cursor: pointer; }
+        
+        .help-body { padding: 20px; font-size: 1rem; line-height: 1.5; color: #ddd; overflow-y: auto; }
+        .help-body h3 { color: var(--accent-blue); margin-top: 0; }
+    </style>
+</head>
+<body>
+
+    <script>
+        async function requestWakeLock() {
+            try { if ('wakeLock' in navigator) { await navigator.wakeLock.request('screen'); } } catch (err) {}
+        }
+        requestWakeLock();
+    </script>
+
+    <div class="top-temp-banner">
+        <div class="flash-overlay" id="flash-fx"></div>
+        <canvas id="temp-canvas" onclick="registerStrike()"></canvas>
+        <div class="temp-overlay">
+            <div class="temp-current-box" onclick="registerStrike()">
+                <span class="temp-value" id="temp-current">14.2°C</span>
+                <span class="temp-trend" id="temp-trend-arrow">→</span>
+            </div>
+            <div style="display: flex; gap: 10px; align-items: flex-start; pointer-events: auto;">
+                <div class="temp-stats-overlay" onclick="registerStrike()">
+                    <div class="stat-label">Muutosnopeus</div>
+                    <div class="stat-val" id="temp-rate">0.0°C / km</div>
+                    <div class="stat-avg" id="temp-avg">KA: 14.0°C</div>
+                </div>
+                <div class="info-btn" onclick="openHelp('temp')">i</div>
+            </div>
+        </div>
+        <span class="graph-label-min" id="graph-lbl-min">13.2°C</span>
+    </div>
+
+    <div class="content-container">
+        <div class="header">
+            <span>SOG: <span id="sog-display">0.0</span> <span class="unit-label">km/h</span></span>
+            <span>Depth Raider (SOW)</span>
+        </div>
+
+        <div class="panel">
+            <div class="target-speed">
+                <span>Tavoite: <span id="target">4.4</span> <span class="unit-toggle unit-label" onclick="toggleUnit(event)">km/h</span></span>
+                <div class="info-btn" onclick="openHelp('speed')">i</div>
+            </div>
+            <div class="current-speed" id="current">4.40</div>
+            <div class="speed-label">Laskettu vedennopeus (SOG + Offset)</div>
+        </div>
+
+        <div class="controls">
+            <button class="btn-main btn-down" onclick="changeTarget(-0.1)">-</button>
+            <div class="offset-container" style="flex: 1; background: #2a2a2a; border-radius: 12px; padding: 5px;">
+                <button class="btn-small" onclick="changeOffset(-0.1)" style="width:35px; height:35px;">-</button>
+                <div class="offset-value" id="offset-display" style="font-size:1.2rem; min-width:40px;">0.0</div>
+                <button class="btn-small" onclick="changeOffset(0.1)" style="width:35px; height:35px;">+</button>
+            </div>
+            <button class="btn-main btn-up" onclick="changeTarget(0.1)">+</button>
+        </div>
+        <div class="speed-label" style="text-align: center; margin-top: -5px; margin-bottom: 10px;">
+            Virtauskorjaus <span class="unit-toggle unit-label" onclick="toggleUnit(event)">km/h</span>
+        </div>
+
+        <div class="active-preset-row">
+            <!-- Uistin wrapper + info -->
+            <div class="preset-wrapper">
+                <button class="btn-active-preset" id="btn-active-preset">
+                    <span id="active-preset-name">Tiura Magnum</span>
+                    <span id="active-preset-speed" style="color: #888; font-size: 0.85rem;">(4.4 km/h) ▼</span>
+                </button>
+                <div class="info-btn" onclick="openHelp('lures')">i</div>
+            </div>
+
+            <!-- Profiili wrapper + info -->
+            <div class="profile-wrapper">
+                <button class="btn-profile" id="btn-profile">
+                    <span id="profile-name">Sahaava</span>
+                    <span class="sub-text" id="profile-status">POIS (Paina pitkään)</span>
+                </button>
+                <div class="info-btn" onclick="openHelp('profile')">i</div>
+            </div>
+        </div>
+
+        <div class="servo-status">
+            <div class="status-text">
+                <span>Kaasun asento (Servo)</span>
+                <span id="servo-pct">40 %</span>
+            </div>
+            <div class="servo-bar-container">
+                <div class="servo-bar" id="servo-bar"></div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Modaalit -->
+    <div class="modal" id="preset-modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                Valitse uistin <span class="close-btn" onclick="closeModal('preset-modal')">✖</span>
+            </div>
+            <div class="preset-list" id="preset-list"></div>
+            <button class="btn-add-new" onclick="addNewPreset()">+ Lisää uusi uistin</button>
+        </div>
+    </div>
+
+    <div class="modal" id="profile-modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                Valitse Ajoprofiili <span class="close-btn" onclick="closeModal('profile-modal')">✖</span>
+            </div>
+            <div class="preset-list" id="profile-list"></div>
+        </div>
+    </div>
+
+    <div class="modal" id="help-modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <span id="help-title">Ohje</span> <span class="close-btn" onclick="closeModal('help-modal')">✖</span>
+            </div>
+            <div class="help-body" id="help-text"></div>
+        </div>
+    </div>
+
+    <script>
+        const helpData = {
+            'temp': {
+                title: 'Lämpökäyrä & Kala kiinni',
+                text: '<h3>Veden lämpötila ja rintamat</h3><p>Yläosan graafi näyttää viimeisen tunnin veden lämpötilakehityksen. Punainen väri tarkoittaa keskiarvoa lämpimämpää vettä, sininen kylmempää.</p><p><b>Kala kiinni!</b> Napauta mitä tahansa kohtaa lämpökäyrältä heti kalan iskiessä. Graafiin piirtyy vihreä pisteviiva merkiksi ottipaikasta.</p>'
+            },
+            'speed': {
+                title: 'Nopeuden säätö & Yksiköt',
+                text: '<h3>Nopeuden hallinta</h3><p>Käytä suuria <b>+</b> ja <b>-</b> painikkeita tavoitevauhdin hienosäätöön. Napauttamalla <b>km/h</b> tai <b>kn</b> -tekstiä voit vaihtaa nopeusyksikköä lennosta.</p><p><b>Virtauskorjaus (Offset):</b> Säädä tarvittaessa eroa pintavauhtiin alareunan pikanapeilla.</p>'
+            },
+            'lures': {
+                title: 'Uistinmuisti & Hallinta',
+                text: '<h3>Uistimen valinta ja tallennus</h3><p>• <b>Lyhyt painallus</b> itse uistinlaatikosta avaa koko listan, josta voit valita uistimen tai lisätä uuden.</p><p>• <b>Pitkä painallus (vajaa sekunti)</b> aktiivisen uistimen päällä tallentaa sen hetkisen tavoitenopeuden oletusarvoksi muistiin.</p><p>• Listasta voit myös tarvittaessa poistaa vanhat uistimet punaisella poistonapilla.</p>'
+            },
+            'profile': {
+                title: 'Iskunlaukaisijat (Profiilit)',
+                text: '<h3>Automaattiset ajoprofiilit</h3><p>• <b>Lyhyt painallus</b> profile-laatikosta kytkee valitun profiilin päälle tai pois päältä.</p><p>• <b>Pitkä painallus</b> avaa valikon, josta voit vaihtaa profiilia (Sahaava, Porras, Stop & Go tai Satunnainen).</p>'
+            }
+        };
+
+        function openHelp(key) {
+            document.getElementById('help-title').innerText = helpData[key].title;
+            document.getElementById('help-text').innerHTML = helpData[key].text;
+            document.getElementById('help-modal').style.display = 'flex';
+        }
+
+        let isKmh = localStorage.getItem('unit_is_kmh') === null ? true : (localStorage.getItem('unit_is_kmh') === 'true');
+        const KN_TO_KMH = 1.852;
+
+        function getUnitString() { return isKmh ? "km/h" : "kn"; }
+        function getDisplayValue(knots) { return isKmh ? (knots * KN_TO_KMH).toFixed(1) : knots.toFixed(1); }
+
+        function toggleUnit(e) {
+            if(e) e.stopPropagation();
+            isKmh = !isKmh;
+            localStorage.setItem('unit_is_kmh', isKmh);
+            
+            document.querySelectorAll('.unit-label').forEach(el => el.innerText = getUnitString());
+            
+            let displayedOffset = isKmh ? (currentOffset * KN_TO_KMH) : currentOffset;
+            let oEl = document.getElementById('offset-display');
+            oEl.innerText = (displayedOffset > 0 ? "+" : "") + displayedOffset.toFixed(1);
+            
+            updateUI();
+        }
+
+        let presets = JSON.parse(localStorage.getItem('saved_lures')) || {
+            'lure_1': { name: 'Tiura Magnum', speed: 2.4 },
+            'lure_2': { name: 'Kosto Dooris 9cm', speed: 2.1 }
+        };
+        let activeLureId = localStorage.getItem('active_lure_id') || 'lure_1';
+        
+        if(!presets[activeLureId]) {
+            let keys = Object.keys(presets);
+            activeLureId = keys.length > 0 ? keys[0] : null;
+        }
+
+        let targetSpeed = (activeLureId && presets[activeLureId]) ? presets[activeLureId].speed : 2.4;
+        let baseTarget = targetSpeed;
+        
+        let currentSpeedSOG = targetSpeed;
+        let currentOffset = 0.0;
+        let servoPos = 40; 
+        let time = 0;
+
+        const autoProfiles = {
+            'sahaava': { name: 'Sahaava', desc: 'Pehmeä aaltoilu ±0.3 kn' },
+            'porras': { name: 'Porras', desc: 'Terävä +0.5 kn kiihdytys 1 min välein' },
+            'pysaytys': { name: 'Stop & Go', desc: 'Pudotus minimiin 5 sekunniksi' },
+            'satunnainen': { name: 'Satunnainen', desc: 'Arpoo nopeuden 20 sekunnin välein' }
+        };
+        let activeProfileId = localStorage.getItem('active_profile_id') || 'sahaava';
+        let profileActive = false;
+        let randomProfileOffset = 0;
+
+        function saveToMemory() { localStorage.setItem('saved_lures', JSON.stringify(presets)); localStorage.setItem('active_lure_id', activeLureId); }
+        function saveProfileMemory() { localStorage.setItem('active_profile_id', activeProfileId); }
+        
+        function updateUI() {
+            document.getElementById('target').innerText = getDisplayValue(targetSpeed);
+            document.querySelectorAll('.unit-label').forEach(el => el.innerText = getUnitString());
+
+            if(activeLureId && presets[activeLureId]) {
+                document.getElementById('active-preset-name').innerText = presets[activeLureId].name;
+                document.getElementById('active-preset-speed').innerText = `(${getDisplayValue(presets[activeLureId].speed)} ${getUnitString()}) ▼`;
+            } else {
+                document.getElementById('active-preset-name').innerText = "Ei uistinta";
+                document.getElementById('active-preset-speed').innerText = "";
+            }
+            
+            const pBtn = document.getElementById('btn-profile');
+            document.getElementById('profile-name').innerText = autoProfiles[activeProfileId].name;
+            if(profileActive) {
+                pBtn.style.backgroundColor = 'var(--accent-orange)';
+                pBtn.style.color = '#000';
+                document.getElementById('profile-status').innerText = 'PÄÄLLÄ';
+            } else {
+                pBtn.style.backgroundColor = '#2c2c2c';
+                pBtn.style.color = 'var(--accent-orange)';
+                document.getElementById('profile-status').innerText = 'POIS (Paina pitkään)';
+            }
+        }
+
+        function changeTarget(deltaDisplay) { 
+            let deltaKnots = isKmh ? (deltaDisplay / KN_TO_KMH) : deltaDisplay;
+            baseTarget += deltaKnots; 
+            if(!profileActive) { targetSpeed = baseTarget; updateUI(); } 
+        }
+
+        function changeOffset(deltaDisplay) {
+            let deltaKnots = isKmh ? (deltaDisplay / KN_TO_KMH) : deltaDisplay;
+            currentOffset += deltaKnots;
+            
+            let displayedOffset = isKmh ? (currentOffset * KN_TO_KMH) : currentOffset;
+            let oEl = document.getElementById('offset-display');
+            oEl.innerText = (displayedOffset > 0 ? "+" : "") + displayedOffset.toFixed(1);
+            oEl.style.color = currentOffset === 0 ? "#fff" : "var(--accent-blue)";
+        }
+        function toggleProfile() { profileActive = !profileActive; if(!profileActive) targetSpeed = baseTarget; updateUI(); }
+
+        let currentTemp = 12.8; const HISTORY_LENGTH = 150; let tempHistory = Array(HISTORY_LENGTH).fill(currentTemp);
+        let tempTick = 0; let fishStrikes = [];
+        const canvas = document.getElementById('temp-canvas'); const ctx = canvas.getContext('2d');
+        const flashFx = document.getElementById('flash-fx');
+
+        function registerStrike() {
+            fishStrikes.push(HISTORY_LENGTH - 1);
+            flashFx.style.opacity = '0.7'; setTimeout(() => { flashFx.style.opacity = '0'; }, 200);
+        }
+
+        function updateTemperatureData() {
+            let trendDrift = Math.sin(time / 8) * 0.08; currentTemp += trendDrift + ((Math.random() - 0.5) * 0.03);
+            tempHistory.shift(); tempHistory.push(currentTemp);
+            for(let i = 0; i < fishStrikes.length; i++) fishStrikes[i]--;
+            fishStrikes = fishStrikes.filter(index => index >= 0);
+
+            let minTemp = Math.min(...tempHistory); let maxTemp = Math.max(...tempHistory);
+            let avgTemp = tempHistory.reduce((a,b) => a+b, 0) / HISTORY_LENGTH;
+            let pastTemp = tempHistory[HISTORY_LENGTH - 20]; let rate = currentTemp - pastTemp; 
+
+            document.getElementById('temp-current').innerText = currentTemp.toFixed(1) + '°C';
+            document.getElementById('temp-avg').innerText = 'KA: ' + avgTemp.toFixed(1) + '°C';
+            
+            let arrow = "→"; let arrowColor = "#fff";
+            if(rate > 0.05) { arrow = "↗"; arrowColor = "var(--accent-red)"; }
+            else if(rate < -0.05) { arrow = "↘"; arrowColor = "var(--accent-blue)"; }
+            
+            document.getElementById('temp-trend-arrow').innerText = arrow;
+            document.getElementById('temp-trend-arrow').style.color = arrowColor;
+            
+            let rateSign = rate > 0 ? "+" : "";
+            document.getElementById('temp-rate').innerText = rateSign + rate.toFixed(1) + "°C/km";
+            document.getElementById('temp-rate').style.color = arrowColor;
+
+            drawGraph(minTemp, maxTemp, avgTemp);
+        }
+
+        function drawGraph(minT, maxT, avgT) {
+            canvas.width = canvas.offsetWidth; canvas.height = canvas.offsetHeight;
+            const w = canvas.width; const h = canvas.height; ctx.clearRect(0, 0, w, h);
+            let yMin = minT - 0.5; let yMax = maxT + 0.5; let yRange = yMax - yMin; if(yRange === 0) yRange = 1; 
+            document.getElementById('graph-lbl-min').innerText = yMin.toFixed(1) + '°C';
+
+            let avgNormalizedY = (avgT - yMin) / yRange; let avgPixelY = h - (avgNormalizedY * h);
+            let grad = ctx.createLinearGradient(0, 0, 0, h);
+            let clampY = Math.max(0, Math.min(1, avgPixelY / h));
+            
+            grad.addColorStop(0, '#ff3d00'); 
+            grad.addColorStop(clampY, '#ff3d00');
+            grad.addColorStop(clampY, '#00b0ff'); 
+            grad.addColorStop(1, '#00b0ff');
+
+            ctx.beginPath(); ctx.strokeStyle = grad; ctx.lineWidth = 4; ctx.lineJoin = 'round';
+            for(let i = 0; i < tempHistory.length; i++) {
+                let x = (i / (HISTORY_LENGTH - 1)) * w; let normalizedY = (tempHistory[i] - yMin) / yRange;
+                let y = h - (normalizedY * h);
+                if(i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+            }
+            ctx.stroke();
+
+            ctx.beginPath(); ctx.strokeStyle = 'rgba(255,255,255,0.2)'; ctx.lineWidth = 1; ctx.setLineDash([5, 5]);
+            ctx.moveTo(0, avgPixelY); ctx.lineTo(w, avgPixelY); ctx.stroke(); ctx.setLineDash([]); 
+
+            fishStrikes.forEach(index => {
+                let x = (index / (HISTORY_LENGTH - 1)) * w; let normalizedY = (tempHistory[index] - yMin) / yRange;
+                let y = h - (normalizedY * h);
+                ctx.beginPath(); ctx.strokeStyle = 'rgba(0, 230, 118, 0.4)'; ctx.lineWidth = 2;
+                ctx.moveTo(x, 0); ctx.lineTo(x, h); ctx.stroke();
+                
+                ctx.beginPath(); 
+                ctx.fillStyle = '#00e676'; 
+                ctx.arc(x, y, 6, 0, Math.PI * 2);
+                ctx.fill(); ctx.strokeStyle = '#000'; ctx.lineWidth = 2; ctx.stroke();
+            });
+        }
+
+        function openLureModal() {
+            let list = document.getElementById('preset-list'); list.innerHTML = '';
+            
+            if(Object.keys(presets).length === 0) {
+                list.innerHTML = '<div style="color:#888; text-align:center; padding:20px;">Ei uistimia muistissa. Lisää uusi!</div>';
+            }
+
+            for(const [id, data] of Object.entries(presets)) {
+                let itemDiv = document.createElement('div');
+                itemDiv.className = 'list-item';
+                if(id === activeLureId) itemDiv.style.borderLeft = "4px solid var(--accent-green)";
+                
+                let clickArea = document.createElement('div');
+                clickArea.className = 'list-item-clickable';
+                clickArea.innerHTML = `<span>${data.name}</span> <span style="color:#aaa;">${getDisplayValue(data.speed)} ${getUnitString()}</span>`;
+                clickArea.onclick = () => {
+                    activeLureId = id; baseTarget = data.speed;
+                    if(!profileActive) targetSpeed = baseTarget;
+                    saveToMemory(); updateUI(); closeModal('preset-modal');
+                };
+
+                let delBtn = document.createElement('button');
+                delBtn.className = 'btn-delete-lure';
+                delBtn.innerText = 'Poista';
+                delBtn.onclick = (e) => {
+                    e.stopPropagation();
+                    if(confirm(`Haluatko varmasti poistaa uistimen "${data.name}"?`)) {
+                        delete presets[id];
+                        if(activeLureId === id) {
+                            let keys = Object.keys(presets);
+                            activeLureId = keys.length > 0 ? keys[0] : null;
+                            if(activeLureId) {
+                                baseTarget = presets[activeLureId].speed;
+                                if(!profileActive) targetSpeed = baseTarget;
+                            }
+                        }
+                        saveToMemory();
+                        openLureModal(); 
+                        updateUI();
+                    }
+                };
+
+                itemDiv.appendChild(clickArea);
+                itemDiv.appendChild(delBtn);
+                list.appendChild(itemDiv);
+            }
+            document.getElementById('preset-modal').style.display = 'flex';
+        }
+
+        function openProfileModal() {
+            let list = document.getElementById('profile-list'); list.innerHTML = '';
+            for(const [id, data] of Object.entries(autoProfiles)) {
+                let btn = document.createElement('button'); btn.className = 'list-item';
+                if(id === activeProfileId) btn.style.borderLeft = "4px solid var(--accent-orange)";
+                btn.innerHTML = `<div class="list-item-row"><span style="font-weight:bold; color:var(--accent-orange);">${data.name}</span></div><div class="list-desc">${data.desc}</div>`;
+                btn.onclick = () => {
+                    activeProfileId = id; saveProfileMemory(); updateUI(); closeModal('profile-modal');
+                };
+                list.appendChild(btn);
+            }
+            document.getElementById('profile-modal').style.display = 'flex';
+        }
+
+        function closeModal(modalId) { document.getElementById(modalId).style.display = 'none'; }
+        
+        function addNewPreset() {
+            let name = prompt("Anna uuden uistimen nimi:");
+            if(name && name.trim() !== "") {
+                let currentDisplaySpeed = getDisplayValue(baseTarget);
+                let speedInput = prompt(`Anna uistimen oletusnopeus (${getUnitString()}):`, currentDisplaySpeed);
+                
+                if(speedInput !== null && speedInput.trim() !== "") {
+                    let parsedSpeed = parseFloat(speedInput.replace(',', '.'));
+                    if(!isNaN(parsedSpeed) && parsedSpeed > 0) {
+                        let speedInKnots = isKmh ? (parsedSpeed / KN_TO_KMH) : parsedSpeed;
+                        
+                        let id = 'lure_' + Date.now();
+                        presets[id] = { name: name.trim(), speed: speedInKnots };
+                        activeLureId = id; 
+                        baseTarget = speedInKnots;
+                        if(!profileActive) targetSpeed = baseTarget;
+                        saveToMemory(); 
+                        updateUI(); 
+                        closeModal('preset-modal');
+                    } else {
+                        alert("Virheellinen nopeus!");
+                    }
+                }
+            }
+        }
+
+        let uistinPressTimer; let isUistinLongPress = false; const btnActive = document.getElementById('btn-active-preset');
+        const startUistinPress = (e) => {
+            e.preventDefault(); isUistinLongPress = false;
+            uistinPressTimer = setTimeout(() => {
+                isUistinLongPress = true;
+                if(activeLureId && presets[activeLureId]) {
+                    presets[activeLureId].speed = baseTarget; saveToMemory(); updateUI();
+                    btnActive.style.backgroundColor = 'var(--accent-green)';
+                    setTimeout(() => { btnActive.style.backgroundColor = ''; }, 500);
+                }
+            }, 600);
+        };
+        const cancelUistinPress = (e) => { e.preventDefault(); clearTimeout(uistinPressTimer); if(!isUistinLongPress) openLureModal(); };
+        btnActive.addEventListener('touchstart', startUistinPress, {passive: false}); btnActive.addEventListener('touchend', cancelUistinPress, {passive: false});
+        btnActive.addEventListener('mousedown', startUistinPress); btnActive.addEventListener('mouseup', cancelUistinPress);
+        btnActive.addEventListener('mouseleave', cancelUistinPress);
+
+        let profPressTimer; let isProfLongPress = false; const btnProf = document.getElementById('btn-profile');
+        const startProfPress = (e) => {
+            e.preventDefault(); isProfLongPress = false;
+            profPressTimer = setTimeout(() => { isProfLongPress = true; openProfileModal(); }, 600);
+        };
+        const cancelProfPress = (e) => { e.preventDefault(); clearTimeout(profPressTimer); if(!isProfLongPress) toggleProfile(); }; 
+        btnProf.addEventListener('touchstart', startProfPress, {passive: false}); btnProf.addEventListener('touchend', cancelProfPress, {passive: false});
+        btnProf.addEventListener('mousedown', startProfPress); btnProf.addEventListener('mouseup', cancelProfPress);
+        btnProf.addEventListener('mouseleave', cancelProfPress);
+
+        document.querySelectorAll('.unit-label').forEach(el => el.innerText = getUnitString());
+        updateUI();
+
+        setInterval(() => {
+            time += 0.1;
+            
+            if(profileActive) { 
+                let cycle;
+                switch(activeProfileId) {
+                    case 'sahaava':
+                        targetSpeed = baseTarget + (Math.sin(time / 4) * 0.3); break;
+                    case 'porras':
+                        cycle = time % 60; targetSpeed = (cycle < 10) ? baseTarget + 0.5 : baseTarget; break;
+                    case 'pysaytys':
+                        cycle = time % 45; targetSpeed = (cycle < 5) ? Math.max(0.5, baseTarget - 0.8) : baseTarget; break;
+                    case 'satunnainen':
+                        if(Math.floor(time * 10) % 200 === 0) randomProfileOffset = (Math.random() * 0.6) - 0.3;
+                        targetSpeed = baseTarget + randomProfileOffset; break;
+                }
+                updateUI(); 
+            }
+            
+            let waveNoise = Math.sin(time * 3) * 0.15 + (Math.random() * 0.05 - 0.025);
+            currentSpeedSOG += (servoPos - 40) * 0.005;
+            currentSpeedSOG += waveNoise * 0.1;
+            currentSpeedSOG -= (currentSpeedSOG - 0.5) * 0.01; 
+
+            document.getElementById('sog-display').innerText = getDisplayValue(currentSpeedSOG);
+
+            let calcSOW = currentSpeedSOG + currentOffset;
+            let error = targetSpeed - calcSOW;
+            servoPos += error * 2.0; 
+            if(servoPos > 85) servoPos = 85; if(servoPos < 15) servoPos = 15; 
+
+            let currEl = document.getElementById('current');
+            currEl.innerText = getDisplayValue(calcSOW);
+            
+            if(Math.abs(error) < 0.15) currEl.style.color = "var(--accent-green)";
+            else if(Math.abs(error) < 0.3) currEl.style.color = "#ffeb3b"; 
+            else currEl.style.color = "var(--accent-red)";
+
+            document.getElementById('servo-bar').style.width = servoPos + '%';
+            document.getElementById('servo-pct').innerText = Math.round(servoPos) + ' %';
+
+            tempTick++;
+            if(tempTick >= 10) { updateTemperatureData(); tempTick = 0; }
+        }, 100);
+    </script>
+</body>
+</html>
